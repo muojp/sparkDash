@@ -198,7 +198,7 @@ export class SystemCollector {
   // ─── GPU helpers ─────────────────────────────────────────
   async _getGPUAll() {
     const gpuOut = await this._nvidiaSmi(
-      "--query-gpu=temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap --format=csv,noheader,nounits"
+      "--query-gpu=temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap,utilization.memory --format=csv,noheader,nounits"
     );
     const gpu = this._parseGpuLine(gpuOut);
     const vram = await this._queryNvidiaVram();
@@ -224,6 +224,7 @@ export class SystemCollector {
       power: { draw: gpu.powerDraw, limit: gpu.powerLimit, systemDraw },
       vram,
       processes,
+      memoryControllerUtil: gpu.memoryControllerUtil,
       throttle: gpu.throttle,
     };
   }
@@ -361,6 +362,7 @@ export class SystemCollector {
         usage: 0,
         powerDraw: 0,
         powerLimit: 120,
+        memoryControllerUtil: null,
         throttle: this._defaultThrottle(),
       };
     }
@@ -375,11 +377,16 @@ export class SystemCollector {
     const swThermal = this._parseSmiActive(parts[7]);
     const hwSlowdown = this._parseSmiActive(parts[8]);
     const powerCap = this._parseSmiActive(parts[9]);
+    // Memory-controller busy % (NVML util.memory / dmon "mem"). On GB10 this is
+    // the only memory-traffic signal NVML offers: byte counters (dmon -s B,
+    // PCIe/BAR) are unsupported there.
+    const memoryControllerUtil = this._parseSmiNumber(parts[10]);
     return {
       temperature,
       usage,
       powerDraw,
       powerLimit,
+      memoryControllerUtil,
       throttle: this._buildThrottle({
         hwThermal,
         swThermal,
@@ -1052,19 +1059,11 @@ export class SystemCollector {
     const percentage = totalMB > 0 ? Math.round((usedMB / totalMB) * 100) : 0;
     const oomRisk = percentage > 85 ? "high" : percentage > 60 ? "medium" : "low";
 
-    // Memory bandwidth (nvidia-smi dmon) — host namespaces when in Docker
-    let bandwidth = { current: 0, peak: 400 };
-    try {
-      const dmonOut = await this._nvidiaSmi("dmon -c 1 -d 1 -s B");
-      const dmonLines = dmonOut.trim().split("\n").filter((l) => !l.startsWith("#") && l.trim());
-      if (dmonLines.length > 0) {
-        const parts = dmonLines[dmonLines.length - 1].split(/\s+/);
-        const readMBs = parseFloat(parts[2]) || 0;
-        const writeMBs = parseFloat(parts[3]) || 0;
-        const totalGBs = (readMBs + writeMBs) / 1024;
-        bandwidth = { current: Math.round(totalGBs * 100) / 100, peak: 400 };
-      }
-    } catch {}
+    // Memory bandwidth: `nvidia-smi dmon -s B` is unsupported on GB10
+    // ("Failed to find any metric to display"), so no byte counter exists to
+    // derive GB/s from. Kept at 0 for UI/exporter shape compatibility; use
+    // gpu.memoryControllerUtil (utilization.memory %) for memory traffic.
+    const bandwidth = { current: 0, peak: 400 };
 
     return {
       total: totalMB,
@@ -1082,7 +1081,7 @@ export class SystemCollector {
   async _getRemoteGpu() {
     try {
       const cmd = [
-        "nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap --format=csv,noheader,nounits 2>/dev/null",
+        "nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap,utilization.memory --format=csv,noheader,nounits 2>/dev/null",
         "echo '---'",
         "nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null",
         "echo '---'",
@@ -1154,6 +1153,7 @@ export class SystemCollector {
         power: { draw: gpu.powerDraw, limit: gpu.powerLimit, systemDraw },
         vram: { used: usedMB, total: totalMB, percentage, available: availableMB },
         processes,
+        memoryControllerUtil: gpu.memoryControllerUtil,
         throttle: gpu.throttle,
       };
     } catch (err) {

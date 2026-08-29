@@ -40,6 +40,7 @@ export const METRICS = Object.freeze({
   gpu_sm_clock_mhz: ["gauge", "Current SM clock"],
   gpu_sm_clock_max_mhz: ["gauge", "Max SM clock"],
   gpu_sm_clock_percent: ["gauge", "Current SM clock as % of max"],
+  gpu_memory_controller_util_percent: ["gauge", "Memory-controller busy % (nvidia-smi utilization.memory / dmon mem). Observed 0 on GB10 even at 95% SM during decode — NVML does not instrument the unified LPDDR5X controller there; exported for non-Spark hosts and future drivers"],
   gpu_process_vram_bytes: ["gauge", "VRAM used by a GPU process (top processes only)"],
   gpu_clock_cap_installed: ["gauge", "1 when the gb10-clock-cap systemd unit exists on the node"],
   gpu_clock_cap_enabled: ["gauge", "1 when the gb10-clock-cap unit is enabled (applied at boot)"],
@@ -62,7 +63,7 @@ export const METRICS = Object.freeze({
   unified_memory_available_bytes: ["gauge", "Unified memory available"],
   unified_memory_usage_percent: ["gauge", "Unified memory usage 0-100"],
   unified_memory_oom_risk: ["gauge", "0=low 1=medium 2=high"],
-  unified_memory_bandwidth_gbps: ["gauge", "Memory bandwidth current (GB/s, from nvidia-smi dmon)"],
+  unified_memory_bandwidth_gbps: ["gauge", "Memory bandwidth current (GB/s, from nvidia-smi dmon -s B) — always 0 on GB10 where dmon -s B is unsupported; use gpu_memory_controller_util_percent"],
   unified_memory_bandwidth_peak_gbps: ["gauge", "Memory bandwidth peak (GB/s)"],
 
   storage_used_bytes: ["gauge", "Filesystem used"],
@@ -175,6 +176,7 @@ export function flattenSnapshot(snap) {
   if (gpu) {
     push("gpu_temperature_celsius", gpu.temperature);
     push("gpu_usage_percent", gpu.usage);
+    if (gpu.memoryControllerUtil != null) push("gpu_memory_controller_util_percent", gpu.memoryControllerUtil);
     if (gpu.power) {
       push("gpu_power_draw_watts", gpu.power.draw);
       push("gpu_power_limit_watts", gpu.power.limit);

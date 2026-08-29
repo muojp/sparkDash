@@ -505,9 +505,9 @@
       ]
     },
     {
-      "id": 14,
+      "id": 16,
       "type": "timeseries",
-      "title": "Memory bandwidth",
+      "title": "RDMA / RoCE throughput (ConnectX-7 IB counters — TP traffic; invisible to /proc/net/dev)",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
@@ -520,7 +520,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "GBs",
+          "unit": "Bps",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10
@@ -540,8 +540,13 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_unified_memory_bandwidth_gbps{spark=~\"$spark\"}",
-          "legendFormat": "{{name}}"
+          "expr": "rate(sparkdash_rdma_receive_bytes_total{spark=~\"$spark\"}[1m]) > 0",
+          "legendFormat": "{{name}} {{hca}} rx"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(sparkdash_rdma_transmit_bytes_total{spark=~\"$spark\"}[1m]) > 0",
+          "legendFormat": "{{name}} {{hca}} tx"
         }
       ]
     },

@@ -220,6 +220,8 @@ export interface GpuMetrics {
   };
   /** Top GPU processes by VRAM usage (sorted descending, max 5). */
   processes?: Array<{ pid: number; name: string; vramMB: number }>;
+  /** Memory-controller busy % (nvidia-smi utilization.memory). null when unreported. */
+  memoryControllerUtil?: number | null;
   /** NVIDIA clock throttle / thermal slowdown state from nvidia-smi. */
   throttle?: GpuThrottle | null;
 }

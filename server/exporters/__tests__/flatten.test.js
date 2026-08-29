@@ -212,3 +212,9 @@ test("rdma ports export counters, rates, link speed and active flag with hca/por
   const none = flattenSnapshot({ id: "h", name: "h", kind: "host", metrics: { network: { interfaces: [] } } });
   assert.ok(!none.some((x) => x.name.startsWith("rdma_")));
 });
+
+test("gpu_memory_controller_util_percent is exported when present and omitted when null", () => {
+  const mk = (v) => ({ id: "d", name: "d", kind: "spark", metrics: { gpu: { temperature: 1, usage: 2, memoryControllerUtil: v } } });
+  assert.equal(flattenSnapshot(mk(37)).find((x) => x.name === "gpu_memory_controller_util_percent").value, 37);
+  assert.ok(!flattenSnapshot(mk(null)).some((x) => x.name === "gpu_memory_controller_util_percent"));
+});

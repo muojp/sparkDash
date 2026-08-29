@@ -115,3 +115,13 @@ test("remote probe output: rdma section is parsed via the shared helpers and rat
   assert.equal(rdma[0].rxSpeed, 0);
   assert.deepEqual(c._defaultNetwork().rdma, []);
 });
+
+test("GPU line carries utilization.memory as memoryControllerUtil (11th field); missing → null", () => {
+  const c = new SystemCollector({ id: "t", isLocal: true });
+  const g = c._parseGpuLine("47, 12, 9.53, 120.00, 2177, 3003, Not Active, Not Active, Not Active, Not Active, 37");
+  assert.equal(g.usage, 12);
+  assert.equal(g.memoryControllerUtil, 37);
+  const old = c._parseGpuLine("47, 12, 9.53, 120.00, 2177, 3003, Not Active, Not Active, Not Active, Not Active");
+  assert.equal(old.memoryControllerUtil, null);
+  assert.equal(c._parseGpuLine("").memoryControllerUtil, null);
+});
