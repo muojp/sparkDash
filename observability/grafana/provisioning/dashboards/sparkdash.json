@@ -259,7 +259,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_rdma_link_speed_mbps{spark=~\"$spark\"} and on(spark,hca,port) sparkdash_rdma_port_active == 1",
+          "expr": "label_replace(sparkdash_rdma_link_speed_mbps{spark=~\"$spark\"} and on(spark,hca,port) sparkdash_rdma_port_active == 1, \"hca\", \"$1\", \"hca\", \"roce(.*)\")",
           "legendFormat": "{{name}} {{hca}}",
           "instant": true
         }
@@ -545,11 +545,6 @@
           "refId": "B",
           "expr": "sparkdash_unified_memory_cpu_used_bytes{spark=~\"$spark\"}",
           "legendFormat": "{{name}} CPU"
-        },
-        {
-          "refId": "C",
-          "expr": "sparkdash_gpu_vram_used_bytes{spark=~\"$spark\"}",
-          "legendFormat": "{{name}} VRAM"
         }
       ]
     },
