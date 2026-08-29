@@ -11,3 +11,7 @@ scrape_configs:
       - targets: ["host.docker.internal:5555"]
         labels:
           site: local-mini
+      # Real fleet: the sparkDash head on dgx01 exposes dgx01 + dgx02
+      - targets: ["192.168.0.100:5555"]
+        labels:
+          site: lab
