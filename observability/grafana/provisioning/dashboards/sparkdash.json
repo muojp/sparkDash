@@ -1,6 +1,6 @@
 {
   "uid": "sparkdash-overview",
-  "title": "sparkDash \u2014 Fleet overview",
+  "title": "sparkDash — Fleet overview",
   "tags": [
     "sparkdash",
     "dgx-spark"
@@ -832,7 +832,7 @@
     {
       "id": 31,
       "type": "timeseries",
-      "title": "Network throughput (rate of byte counters \u2014 burst-safe)",
+      "title": "Network throughput (rate of byte counters — burst-safe)",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
@@ -876,6 +876,99 @@
       ]
     },
     {
+      "id": 34,
+      "type": "timeseries",
+      "title": "RDMA / RoCE throughput (ConnectX-7, rate of IB counters — NCCL traffic is invisible to /proc/net/dev)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 18,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(sparkdash_rdma_receive_bytes_total{spark=~\"$spark\"}[1m]) > 0",
+          "legendFormat": "{{name}} {{hca}} rx"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(sparkdash_rdma_transmit_bytes_total{spark=~\"$spark\"}[1m]) > 0",
+          "legendFormat": "{{name}} {{hca}} tx"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "type": "stat",
+      "title": "RDMA link (active ports)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 59,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Mbits",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "vertical"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sparkdash_rdma_link_speed_mbps{spark=~\"$spark\"} and on(spark,hca,port) sparkdash_rdma_port_active == 1",
+          "legendFormat": "{{name}} {{hca}}",
+          "instant": true
+        }
+      ]
+    },
+    {
       "id": 32,
       "type": "timeseries",
       "title": "Storage I/O (rate of byte counters)",
@@ -885,7 +978,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 67,
         "w": 12,
         "h": 8
       },
@@ -931,7 +1024,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 59,
+        "y": 67,
         "w": 12,
         "h": 8
       },
@@ -970,7 +1063,7 @@
       "title": "Same data via InfluxDB (push path)",
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 75,
         "w": 24,
         "h": 1
       },
@@ -987,7 +1080,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 76,
         "w": 12,
         "h": 8
       },
@@ -1029,7 +1122,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 68,
+        "y": 76,
         "w": 12,
         "h": 8
       },

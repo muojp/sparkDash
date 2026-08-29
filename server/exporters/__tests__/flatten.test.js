@@ -178,3 +178,37 @@ test("non-finite values are dropped instead of exported", () => {
   const out = flattenSnapshot({ id: "x", name: "X", online: true, metrics: { cpu: { usage: NaN, temperature: "abc", draw: Infinity, tdp: 65 } } });
   assert.deepEqual(out.map((s) => s.name), ["up", "unit_info", "cpu_tdp_watts"]);
 });
+
+test("rdma ports export counters, rates, link speed and active flag with hca/port labels", () => {
+  const snap = {
+    id: "dgx01",
+    name: "dgx01",
+    kind: "spark",
+    metrics: {
+      network: {
+        primaryInterface: "enP7s7",
+        linkSpeedMbps: 10000,
+        interfaces: [],
+        rdma: [
+          { hca: "rocep1s0f0", port: "1", rxBytes: 4000, txBytes: 2000, rxPackets: 10, txPackets: 20, rxSpeed: 171e6, txSpeed: 170e6, rateMbps: 200000, state: "active", active: true },
+          { hca: "rocep1s0f1", port: "1", rxBytes: 0, txBytes: 0, rxPackets: 0, txPackets: 0, rxSpeed: 0, txSpeed: 0, rateMbps: 40000, state: "down", active: false },
+        ],
+      },
+    },
+  };
+  const s = flattenSnapshot(snap);
+  const by = (n, hca) => s.find((x) => x.name === n && x.labels.hca === hca);
+  assert.equal(by("rdma_receive_bytes_total", "rocep1s0f0").value, 4000);
+  assert.equal(by("rdma_receive_bytes_total", "rocep1s0f0").type, "counter");
+  assert.equal(by("rdma_receive_bytes_total", "rocep1s0f0").labels.port, "1");
+  assert.equal(by("rdma_transmit_packets_total", "rocep1s0f0").value, 20);
+  assert.equal(by("rdma_receive_bytes_per_second", "rocep1s0f0").value, 171e6);
+  assert.equal(by("rdma_link_speed_mbps", "rocep1s0f0").value, 200000);
+  assert.equal(by("rdma_port_active", "rocep1s0f0").value, 1);
+  assert.equal(by("rdma_port_active", "rocep1s0f1").value, 0);
+  assert.equal(by("rdma_link_speed_mbps", "rocep1s0f1").value, 40000);
+
+  // absent rdma → no rdma samples, no throw
+  const none = flattenSnapshot({ id: "h", name: "h", kind: "host", metrics: { network: { interfaces: [] } } });
+  assert.ok(!none.some((x) => x.name.startsWith("rdma_")));
+});

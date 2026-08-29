@@ -82,6 +82,15 @@ export const METRICS = Object.freeze({
   network_transmit_bytes_total: ["counter", "Cumulative bytes transmitted on the interface since boot"],
   network_interface_up: ["gauge", "1 when operstate is up"],
 
+  rdma_receive_bytes_total: ["counter", "Cumulative bytes received on the RDMA/RoCE port (IB port_rcv_data × 4) — NCCL traffic bypasses /proc/net/dev and only shows here"],
+  rdma_transmit_bytes_total: ["counter", "Cumulative bytes transmitted on the RDMA/RoCE port (IB port_xmit_data × 4)"],
+  rdma_receive_packets_total: ["counter", "Cumulative packets received on the RDMA/RoCE port"],
+  rdma_transmit_packets_total: ["counter", "Cumulative packets transmitted on the RDMA/RoCE port"],
+  rdma_receive_bytes_per_second: ["gauge", "RDMA/RoCE receive throughput (collector's last poll window)"],
+  rdma_transmit_bytes_per_second: ["gauge", "RDMA/RoCE transmit throughput (collector's last poll window)"],
+  rdma_link_speed_mbps: ["gauge", "RDMA/RoCE port link rate"],
+  rdma_port_active: ["gauge", "1 when the IB port state is ACTIVE"],
+
   llm_available: ["gauge", "1 when the LLM server answered the probe"],
   llm_slots_active: ["gauge", "Active generation slots / requests"],
   llm_slots_max: ["gauge", "Total generation slots"],
@@ -266,6 +275,18 @@ export function flattenSnapshot(snap) {
       if (i.rxBytes != null) push("network_receive_bytes_total", i.rxBytes, l);
       if (i.txBytes != null) push("network_transmit_bytes_total", i.txBytes, l);
       push("network_interface_up", i.operstate === "up", l);
+    }
+    for (const r of net.rdma || []) {
+      if (!r) continue;
+      const l = { hca: String(r.hca ?? ""), port: String(r.port ?? "") };
+      if (r.rxBytes != null) push("rdma_receive_bytes_total", r.rxBytes, l);
+      if (r.txBytes != null) push("rdma_transmit_bytes_total", r.txBytes, l);
+      if (r.rxPackets != null) push("rdma_receive_packets_total", r.rxPackets, l);
+      if (r.txPackets != null) push("rdma_transmit_packets_total", r.txPackets, l);
+      push("rdma_receive_bytes_per_second", r.rxSpeed, l);
+      push("rdma_transmit_bytes_per_second", r.txSpeed, l);
+      if (r.rateMbps != null) push("rdma_link_speed_mbps", r.rateMbps, l);
+      push("rdma_port_active", r.active === true || r.state === "active", l);
     }
   }
 

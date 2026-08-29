@@ -272,12 +272,31 @@ export interface NetworkInterface {
   disabled?: boolean;
 }
 
+/** One InfiniBand / RoCE port (ConnectX-7 on DGX Spark). RDMA traffic bypasses /proc/net/dev. */
+export interface RdmaPort {
+  hca: string;
+  port: string;
+  /** Cumulative bytes since boot (IB port_*_data × 4). */
+  rxBytes: number;
+  txBytes: number;
+  rxPackets: number;
+  txPackets: number;
+  rxSpeed: number;
+  txSpeed: number;
+  rateMbps: number | null;
+  /** "active" | "down" | ... (lower-cased IB port state) */
+  state: string;
+  active: boolean;
+}
+
 export interface NetworkMetrics {
   primaryInterface: string | null;
   linkSpeedMbps: number | null;
   interfaces: NetworkInterface[];
   /** MAC of enP7s7 when present (same value persisted as detectedMacAddress). */
   wolMac?: string | null;
+  /** RDMA / RoCE ports (empty on hosts without an IB subsystem). */
+  rdma?: RdmaPort[];
 }
 
 // ─── Unified memory metrics ──────────────────────────────

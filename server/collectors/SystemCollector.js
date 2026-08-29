@@ -4,6 +4,72 @@ import { HOST_PATHS, GPU_MEMORY_JSON_PATH, DGX_SPARK, HARDWARE_DEFAULTS } from "
 import { normalizeMac, WOL_INTERFACE } from "../wol.js";
 import { sshExec } from "./ssh.js";
 
+
+// ─── RDMA / InfiniBand port helpers (pure) ──────────────────
+/**
+ * IB port counters `port_rcv_data` / `port_xmit_data` are in units of 4 bytes
+ * (octets / 4, per the IB spec) — convert to bytes here and nowhere else.
+ */
+export function ibDataToBytes(raw) {
+  if (raw == null || String(raw).trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n * 4 : null;
+}
+
+/** "200 Gb/sec (2X NDR)" → 200000 (Mbps). null when unparseable. */
+export function parseIbRateMbps(raw) {
+  const m = String(raw ?? "").match(/([\d.]+)\s*([GMK]?)b\/s/i);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  if (!Number.isFinite(v)) return null;
+  const mult = { G: 1000, M: 1, K: 0.001, "": 1e-6 }[m[2].toUpperCase()];
+  return Math.round(v * mult);
+}
+
+/** "4: ACTIVE" → "active"; "1: DOWN" → "down". */
+export function parseIbState(raw) {
+  const m = String(raw ?? "").match(/^\s*\d+:\s*(\S+)/);
+  return (m ? m[1] : String(raw ?? "").trim() || "unknown").toLowerCase();
+}
+
+/**
+ * Parse one line of the remote RDMA probe:
+ *   `<hca> <port> <rcv_data> <xmit_data> <rcv_pkts> <xmit_pkts> <rate...> | <state>`
+ * Returns the raw port sample (bytes already ×4) or null.
+ */
+export function parseIbPortLine(line) {
+  const [left, stateRaw = ""] = String(line).split("|");
+  const parts = left.trim().split(/\s+/);
+  if (parts.length < 7) return null;
+  const [hca, port, rcvData, xmitData, rcvPkts, xmitPkts, ...rate] = parts;
+  const rxBytes = ibDataToBytes(rcvData);
+  const txBytes = ibDataToBytes(xmitData);
+  if (rxBytes == null || txBytes == null) return null;
+  return {
+    hca,
+    port,
+    rxBytes,
+    txBytes,
+    rxPackets: parseInt(rcvPkts, 10) || 0,
+    txPackets: parseInt(xmitPkts, 10) || 0,
+    rateMbps: parseIbRateMbps(rate.join(" ")),
+    state: parseIbState(stateRaw),
+  };
+}
+
+/**
+ * Shell fragment that prints one `parseIbPortLine` line per IB port.
+ * Used verbatim for remote units; local units read sysfs directly.
+ */
+export const IB_PORT_PROBE_CMD =
+  'for p in /sys/class/infiniband/*/ports/*; do [ -d "$p" ] || continue; ' +
+  'echo "$(basename $(dirname $(dirname $p))) $(basename $p) ' +
+  '$(cat $p/counters/port_rcv_data 2>/dev/null || echo 0) ' +
+  '$(cat $p/counters/port_xmit_data 2>/dev/null || echo 0) ' +
+  '$(cat $p/counters/port_rcv_packets 2>/dev/null || echo 0) ' +
+  '$(cat $p/counters/port_xmit_packets 2>/dev/null || echo 0) ' +
+  '$(cat $p/rate 2>/dev/null) | $(cat $p/state 2>/dev/null)"; done 2>/dev/null';
+
 /**
  * SystemCollector — collects hardware metrics for a Spark.
  * In Phase 2, this is the LOCAL path only (no SSH).
@@ -16,6 +82,7 @@ export class SystemCollector {
 
     // Rate-tracking baselines
     this.lastNetworkStats = new Map();
+    this.lastRdmaStats = new Map();
     this.lastCpuStat = null;
     /** Last computed CPU usage percentage (0-100) — used by GPU system-draw estimate. */
     this.lastCpuUsagePct = 0;
@@ -109,7 +176,8 @@ export class SystemCollector {
       }
       const linkSpeed = primaryInterface ? await this._getNetworkLinkSpeedMbps(primaryInterface) : null;
       const wolMac = await this._getWolInterfaceMac();
-      return { primaryInterface, linkSpeedMbps: linkSpeed, interfaces, wolMac };
+      const rdma = this._getRdmaMetrics();
+      return { primaryInterface, linkSpeedMbps: linkSpeed, interfaces, wolMac, rdma };
     } catch (err) {
       console.error(`[SystemCollector] Network error for ${this.spark.id}:`, err.message);
       return this._defaultNetwork();
@@ -721,6 +789,86 @@ export class SystemCollector {
     }
   }
 
+  // ─── RDMA helpers ─────────────────────────────────────────
+  /**
+   * Apply rate tracking to raw IB port samples (shared by local + remote).
+   * Speeds are bytes/s over the window since the previous sample of the same
+   * hca/port; first sample → 0.
+   */
+  _rateRdmaPorts(samples, now = Date.now()) {
+    const out = [];
+    for (const s of samples) {
+      if (!s) continue;
+      const key = `${s.hca}/${s.port}`;
+      const last = this.lastRdmaStats.get(key);
+      this.lastRdmaStats.set(key, { rxBytes: s.rxBytes, txBytes: s.txBytes, time: now });
+      let rxSpeed = 0;
+      let txSpeed = 0;
+      if (last && now > last.time) {
+        const dtSec = (now - last.time) / 1000;
+        rxSpeed = (s.rxBytes - last.rxBytes) / dtSec;
+        txSpeed = (s.txBytes - last.txBytes) / dtSec;
+      }
+      out.push({
+        ...s,
+        rxSpeed: Math.max(0, Math.round(rxSpeed)),
+        txSpeed: Math.max(0, Math.round(txSpeed)),
+        active: s.state === "active",
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Local RDMA / RoCE port counters from sysfs. NCCL over RoCE (RDMA) bypasses
+   * the kernel network stack, so this traffic never appears in /proc/net/dev —
+   * only here. Returns [] on hosts without an IB subsystem; never throws.
+   */
+  _getRdmaMetrics() {
+    try {
+      const sysRoot = fs.existsSync(HOST_PATHS.SYS) ? HOST_PATHS.SYS : "/sys";
+      const ibDir = path.join(sysRoot, "class", "infiniband");
+      if (!fs.existsSync(ibDir)) return [];
+      const rd = (p) => {
+        try {
+          return fs.readFileSync(p, "utf-8").trim();
+        } catch {
+          return "";
+        }
+      };
+      const samples = [];
+      for (const hca of fs.readdirSync(ibDir)) {
+        const portsDir = path.join(ibDir, hca, "ports");
+        let ports = [];
+        try {
+          ports = fs.readdirSync(portsDir);
+        } catch {
+          continue;
+        }
+        for (const port of ports) {
+          const p = path.join(portsDir, port);
+          const c = path.join(p, "counters");
+          const rxBytes = ibDataToBytes(rd(path.join(c, "port_rcv_data")));
+          const txBytes = ibDataToBytes(rd(path.join(c, "port_xmit_data")));
+          if (rxBytes == null || txBytes == null) continue;
+          samples.push({
+            hca,
+            port,
+            rxBytes,
+            txBytes,
+            rxPackets: parseInt(rd(path.join(c, "port_rcv_packets")), 10) || 0,
+            txPackets: parseInt(rd(path.join(c, "port_xmit_packets")), 10) || 0,
+            rateMbps: parseIbRateMbps(rd(path.join(p, "rate"))),
+            state: parseIbState(rd(path.join(p, "state"))),
+          });
+        }
+      }
+      return this._rateRdmaPorts(samples);
+    } catch {
+      return [];
+    }
+  }
+
   // ─── Network helpers ─────────────────────────────────────
   async _getNetworkMetrics() {
     // /proc/net is netns-local; must use host netns inside Docker
@@ -1172,6 +1320,9 @@ export class SystemCollector {
         "echo '---'",
         // WoL MAC for the primary LAN NIC on DGX Spark
         `cat /sys/class/net/${WOL_INTERFACE}/address 2>/dev/null || true`,
+        "echo '---'",
+        // RDMA / RoCE port counters (NCCL traffic is invisible to /proc/net/dev)
+        IB_PORT_PROBE_CMD,
       ].join("; ");
 
       const output = await sshExec(this.spark, cmd);
@@ -1181,6 +1332,9 @@ export class SystemCollector {
       const ipOut = sections[2]?.trim() || "";
       const operstateOut = sections[3]?.trim() || "";
       const wolMac = normalizeMac(sections[4]?.trim() || "");
+      const rdma = this._rateRdmaPorts(
+        (sections[5] || "").split("\n").map(parseIbPortLine).filter(Boolean)
+      );
 
       // Parse operstate lines ("enP7s7:up")
       const operstateMap = new Map();
@@ -1269,7 +1423,7 @@ export class SystemCollector {
         }
       }
 
-      return { primaryInterface, linkSpeedMbps, interfaces: tagged, wolMac };
+      return { primaryInterface, linkSpeedMbps, interfaces: tagged, wolMac, rdma };
     } catch (err) {
       console.error(`[SystemCollector] Remote Network error for ${this.spark.id}:`, err.message);
       return this._defaultNetwork();
@@ -1535,7 +1689,7 @@ export class SystemCollector {
   }
 
   _defaultNetwork() {
-    return { primaryInterface: null, linkSpeedMbps: null, interfaces: [], wolMac: null };
+    return { primaryInterface: null, linkSpeedMbps: null, interfaces: [], wolMac: null, rdma: [] };
   }
 
   _defaultUnifiedMemory() {
