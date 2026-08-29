@@ -19,7 +19,7 @@ services:
     container_name: sparkdash-prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.time=180d
       - --web.enable-lifecycle
     ports:
       - "9090:9090"
@@ -39,7 +39,7 @@ services:
       DOCKER_INFLUXDB_INIT_PASSWORD: sparkdash123
       DOCKER_INFLUXDB_INIT_ORG: sparkdash
       DOCKER_INFLUXDB_INIT_BUCKET: sparkdash
-      DOCKER_INFLUXDB_INIT_RETENTION: 7d
+      DOCKER_INFLUXDB_INIT_RETENTION: 180d   # applied at first setup only; existing bucket changed via API
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-sparkdash-dev-token}
     volumes:
       - influx-data:/var/lib/influxdb2
