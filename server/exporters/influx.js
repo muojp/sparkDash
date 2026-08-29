@@ -51,6 +51,10 @@ export function renderLineProtocol(samples, opts = {}) {
   /** @type {Map<string, {measurement:string, tags:string, fields:Map<string,number>}>} */
   const points = new Map();
   for (const s of samples) {
+    // Prometheus-style `*_info` metrics (value 1, facts in labels) have no
+    // InfluxDB equivalent worth storing — the same facts already ride along
+    // as tags on the other points of that unit. Skip them.
+    if (s.name.endsWith("_info")) continue;
     const [domain, fieldName] = splitMetricName(s.name);
     const meas = prefix + domain;
     const tags = Object.keys(s.labels)

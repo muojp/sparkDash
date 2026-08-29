@@ -10,6 +10,11 @@ const snap = {
   kind: "spark",
   online: true,
   uptime: 1234,
+  role: "worker",
+  lanIp: "192.168.0.130",
+  workerLabel: "distributed",
+  workerHeadId: "dgx01",
+  hardware: { device: "NVIDIA DGX Spark", cpuModel: "GB10", gpuChip: "GB10", cudaDriver: null },
   llmPorts: [8888, 8889],
   comfyPort: 8188,
   hermes: { monitoring: true, installed: true, updateAvailable: false, behindCommits: 0 },
@@ -42,7 +47,7 @@ const snap = {
       ],
     },
     llm: [
-      { available: true, backend: "vllm", modelId: "org/model", slotsActive: 1, slotsTotal: 8, generationTps: 33.3, prefillTps: 500, totalOutputTokens: 9999, kvCacheUsage: 0.4, requestsRunning: 1, requestsWaiting: null, preemptionsTotal: 2 },
+      { available: true, backend: "vllm", modelId: "org/model", slotsActive: 1, slotsTotal: 8, generationTps: 33.3, prefillTps: 500, totalOutputTokens: 9999, kvCacheUsage: 0.4, requestsRunning: 1, requestsWaiting: null, preemptionsTotal: 2, posture: { level: "warn", auth: "open", scope: "lan", label: "Open · LAN", detail: "" } },
       { available: false, backend: null, modelId: null, slotsActive: 0, slotsTotal: 0, generationTps: 0, prefillTps: 0, totalOutputTokens: 0, error: "ECONNREFUSED" },
     ],
     comfy: { available: true, port: 8188, queueRunning: 1, queuePending: 3, progress: { percent: 42 }, queueEtaMs: 90000 },
@@ -130,15 +135,35 @@ test("comfy / tailscale / hermes", () => {
   assert.equal(find(out, "hermes_update_available").value, 0);
 });
 
+test("info metrics carry static facts as labels", () => {
+  const out = flattenSnapshot(snap);
+  const info = find(out, "unit_info");
+  assert.equal(info.value, 1);
+  assert.equal(info.labels.role, "worker");
+  assert.equal(info.labels.lan_ip, "192.168.0.130");
+  assert.equal(info.labels.device, "NVIDIA DGX Spark");
+  assert.equal(info.labels.gpu_chip, "GB10");
+  assert.equal(info.labels.cuda_driver, "");
+  assert.equal(info.labels.worker_label, "distributed");
+  assert.equal(info.labels.worker_head, "dgx01");
+  assert.equal(find(out, "network_primary_interface_info", { interface: "enP7s7" }).value, 1);
+  const posture = find(out, "llm_posture_level", { port: "8888" });
+  assert.equal(posture.value, 1);
+  assert.equal(posture.labels.auth, "open");
+  assert.equal(posture.labels.scope, "lan");
+  assert.equal(find(out, "llm_posture_level", { port: "8889" }), undefined);
+});
+
 test("offline / empty snapshot degrades to up=0 only plus default metric objects", () => {
   const out = flattenSnapshot({ id: "x", name: "X", online: false, uptime: null, metrics: {} });
-  assert.deepEqual(out.map((s) => s.name), ["up"]);
+  assert.deepEqual(out.map((s) => s.name), ["up", "unit_info"]);
   assert.equal(out[0].value, 0);
+  assert.equal(out[1].labels.role, "");
   assert.deepEqual(flattenSnapshot(null), []);
   assert.deepEqual(flattenSnapshots([]), []);
 });
 
 test("non-finite values are dropped instead of exported", () => {
   const out = flattenSnapshot({ id: "x", name: "X", online: true, metrics: { cpu: { usage: NaN, temperature: "abc", draw: Infinity, tdp: 65 } } });
-  assert.deepEqual(out.map((s) => s.name), ["up", "cpu_tdp_watts"]);
+  assert.deepEqual(out.map((s) => s.name), ["up", "unit_info", "cpu_tdp_watts"]);
 });

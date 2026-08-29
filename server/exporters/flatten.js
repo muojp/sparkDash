@@ -17,12 +17,14 @@
 const MB = 1024 * 1024;
 
 const OOM_RISK = { low: 0, medium: 1, high: 2 };
+const POSTURE_LEVEL = { ok: 0, warn: 1, danger: 2 };
 const THROTTLE_REASON = { ok: 0, thermal: 1, power: 2, hw: 3, unknown: 4 };
 
 /** Metric catalog — help text + type live here so every exporter agrees. */
 export const METRICS = Object.freeze({
   up: ["gauge", "1 when the unit passed its last liveness check"],
   uptime_seconds: ["gauge", "System uptime in seconds (from /proc/uptime)"],
+  unit_info: ["gauge", "Static unit facts as labels (role, lan_ip, device, gpu_chip, cpu_model, cuda_driver, worker_label, worker_head); value 1"],
 
   gpu_temperature_celsius: ["gauge", "GPU temperature"],
   gpu_usage_percent: ["gauge", "GPU utilization 0-100"],
@@ -69,6 +71,7 @@ export const METRICS = Object.freeze({
   storage_write_bytes_total: ["counter", "Cumulative bytes written to the block device since boot"],
 
   network_link_speed_mbps: ["gauge", "Primary interface link speed"],
+  network_primary_interface_info: ["gauge", "Default-route interface as the `interface` label; value 1"],
   network_receive_bytes_per_second: ["gauge", "Interface receive throughput (collector's last poll window)"],
   network_transmit_bytes_per_second: ["gauge", "Interface transmit throughput (collector's last poll window)"],
   network_receive_bytes_total: ["counter", "Cumulative bytes received on the interface since boot — use rate() for loss-free throughput"],
@@ -94,6 +97,7 @@ export const METRICS = Object.freeze({
   llm_preemptions_total: ["counter", "Cumulative preemptions (vLLM)"],
   llm_prefix_cache_hit_ratio: ["gauge", "Prefix cache hit rate 0-1 (vLLM)"],
   llm_mtp_acceptance_ratio: ["gauge", "Speculative / MTP acceptance rate 0-1 (vLLM)"],
+  llm_posture_level: ["gauge", "Exposure posture of the LLM endpoint: 0=ok 1=warn 2=danger; labels auth (open|protected|keyed) and scope (local|lan|public|unknown)"],
 
   comfy_available: ["gauge", "1 when ComfyUI answered the probe"],
   comfy_queue_running: ["gauge", "Running ComfyUI jobs"],
@@ -137,6 +141,19 @@ export function flattenSnapshot(snap) {
 
   push("up", snap.online);
   if (snap.uptime != null) push("uptime_seconds", snap.uptime);
+  {
+    const hw = snap.hardware || {};
+    push("unit_info", 1, {
+      role: String(snap.role ?? ""),
+      lan_ip: String(snap.lanIp ?? ""),
+      device: String(hw.device ?? ""),
+      gpu_chip: String(hw.gpuChip ?? ""),
+      cpu_model: String(hw.cpuModel ?? ""),
+      cuda_driver: String(hw.cudaDriver ?? ""),
+      worker_label: String(snap.workerLabel ?? ""),
+      worker_head: String(snap.workerHeadId ?? ""),
+    });
+  }
 
   const m = snap.metrics || {};
 
@@ -220,6 +237,9 @@ export function flattenSnapshot(snap) {
   // ── Network ──
   const net = m.network;
   if (net) {
+    if (net.primaryInterface) {
+      push("network_primary_interface_info", 1, { interface: String(net.primaryInterface) });
+    }
     if (net.linkSpeedMbps != null) {
       push("network_link_speed_mbps", net.linkSpeedMbps, {
         interface: String(net.primaryInterface ?? ""),
@@ -264,6 +284,13 @@ export function flattenSnapshot(snap) {
     if (llm.preemptionsTotal != null) push("llm_preemptions_total", llm.preemptionsTotal, l);
     if (llm.prefixCacheHitRate != null) push("llm_prefix_cache_hit_ratio", llm.prefixCacheHitRate, l);
     if (llm.mtpAcceptanceRate != null) push("llm_mtp_acceptance_ratio", llm.mtpAcceptanceRate, l);
+    if (llm.posture && llm.posture.level in POSTURE_LEVEL) {
+      push("llm_posture_level", POSTURE_LEVEL[llm.posture.level], {
+        ...l,
+        auth: String(llm.posture.auth ?? "unknown"),
+        scope: String(llm.posture.scope ?? "unknown"),
+      });
+    }
   });
 
   // ── ComfyUI ──

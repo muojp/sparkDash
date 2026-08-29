@@ -44,6 +44,11 @@ test("one line per (measurement, tag set); all fields written as floats (no i su
   assert.equal(lines.filter((l) => l.startsWith("sparkdash_llm,")).length, 1);
 });
 
+test("*_info metrics are not written to InfluxDB", () => {
+  const text = renderLineProtocol(flattenSnapshot({ id: "a", name: "A", online: true, role: "head", metrics: { network: { primaryInterface: "enP7s7", interfaces: [] } } }), { timestampMs: 1 });
+  assert.equal(text, "sparkdash_unit,kind=spark,name=A,spark=a up=1.0 1\n");
+});
+
 test("empty samples → empty body", () => {
   assert.equal(renderLineProtocol([], { timestampMs: 1 }), "");
 });
