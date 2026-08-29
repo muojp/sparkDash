@@ -217,12 +217,101 @@
       ]
     },
     {
+      "id": 5,
+      "type": "stat",
+      "title": "GPU clock cap",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "OFF (stock clocks)",
+                  "color": "orange"
+                },
+                "1": {
+                  "text": "CAPPED",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sparkdash_gpu_clock_cap_active{spark=~\"$spark\"}",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "SM clock (clock-cap probe)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rotmhz"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sparkdash_gpu_clock_cap_sm_clock_mhz{spark=~\"$spark\"}",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
       "id": 101,
       "type": "row",
       "title": "GPU / Memory (Prometheus)",
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 8,
         "w": 24,
         "h": 1
       },
@@ -239,7 +328,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 9,
         "w": 12,
         "h": 8
       },
@@ -282,7 +371,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 6,
+        "y": 9,
         "w": 12,
         "h": 8
       },
@@ -323,7 +412,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 17,
         "w": 12,
         "h": 8
       },
@@ -374,7 +463,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 14,
+        "y": 17,
         "w": 12,
         "h": 8
       },
@@ -425,7 +514,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 25,
         "w": 12,
         "h": 8
       },
@@ -466,7 +555,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 22,
+        "y": 25,
         "w": 12,
         "h": 8
       },
@@ -503,7 +592,7 @@
       "title": "LLM",
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 33,
         "w": 24,
         "h": 1
       },
@@ -520,7 +609,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -561,7 +650,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 31,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -602,7 +691,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 39,
+        "y": 42,
         "w": 12,
         "h": 8
       },
@@ -643,7 +732,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 39,
+        "y": 42,
         "w": 12,
         "h": 8
       },
@@ -690,7 +779,7 @@
       "title": "CPU / Network / Storage",
       "gridPos": {
         "x": 0,
-        "y": 47,
+        "y": 50,
         "w": 24,
         "h": 1
       },
@@ -707,7 +796,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -750,7 +839,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 48,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -796,7 +885,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 59,
         "w": 12,
         "h": 8
       },
@@ -842,7 +931,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 56,
+        "y": 59,
         "w": 12,
         "h": 8
       },
@@ -881,7 +970,7 @@
       "title": "Same data via InfluxDB (push path)",
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 67,
         "w": 24,
         "h": 1
       },
@@ -898,7 +987,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 65,
+        "y": 68,
         "w": 12,
         "h": 8
       },
@@ -940,7 +1029,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 65,
+        "y": 68,
         "w": 12,
         "h": 8
       },

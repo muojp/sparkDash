@@ -311,3 +311,25 @@ export class DemoLlmProbe {
     };
   }
 }
+
+/** Synthetic gb10-clock-cap state: installed, cap active, SM clock follows the GPU walker. */
+export class DemoClockCapProbe {
+  constructor(spark, collector) {
+    this.spark = spark;
+    this.collector = collector;
+  }
+  setTarget(spark) {
+    this.spark = spark;
+  }
+  async probe() {
+    const clock = this.collector?.w?.smClock?.v;
+    return {
+      installed: true,
+      enabled: true,
+      active: true,
+      smClockMHz: Number.isFinite(clock) ? Math.round(clock) : 1500,
+      checkedAt: Date.now(),
+      error: null,
+    };
+  }
+}

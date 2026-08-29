@@ -41,6 +41,10 @@ export const METRICS = Object.freeze({
   gpu_sm_clock_max_mhz: ["gauge", "Max SM clock"],
   gpu_sm_clock_percent: ["gauge", "Current SM clock as % of max"],
   gpu_process_vram_bytes: ["gauge", "VRAM used by a GPU process (top processes only)"],
+  gpu_clock_cap_installed: ["gauge", "1 when the gb10-clock-cap systemd unit exists on the node"],
+  gpu_clock_cap_enabled: ["gauge", "1 when the gb10-clock-cap unit is enabled (applied at boot)"],
+  gpu_clock_cap_active: ["gauge", "1 when the GPU clock cap is currently applied (unit active)"],
+  gpu_clock_cap_sm_clock_mhz: ["gauge", "SM clock read at clock-cap probe time"],
 
   cpu_usage_percent: ["gauge", "CPU utilization 0-100"],
   cpu_temperature_celsius: ["gauge", "CPU temperature"],
@@ -187,6 +191,15 @@ export function flattenSnapshot(snap) {
         process: String(p.name ?? ""),
       });
     }
+  }
+
+  // ── GPU clock cap (opt-in probe; null fields = not probed yet / unreachable) ──
+  const cc = snap.clockCap;
+  if (cc && cc.monitoring) {
+    if (cc.installed != null) push("gpu_clock_cap_installed", cc.installed);
+    if (cc.enabled != null) push("gpu_clock_cap_enabled", cc.enabled);
+    if (cc.active != null) push("gpu_clock_cap_active", cc.active);
+    if (cc.smClockMHz != null) push("gpu_clock_cap_sm_clock_mhz", cc.smClockMHz);
   }
 
   // ── CPU / RAM ──

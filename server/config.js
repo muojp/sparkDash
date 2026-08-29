@@ -100,6 +100,12 @@ const EXPORTERS = {
   influxTimeoutMs: parseInt(process.env.INFLUX_TIMEOUT_MS || "5000", 10),
 };
 
+// ─── GPU clock cap (gb10-clock-cap unit) monitoring ──────
+// Opt-in: stock sparkDash hosts have no such unit. One SSH round-trip per poll.
+const CLOCK_CAP_MONITORING = _bool(process.env.CLOCK_CAP_MONITORING, false);
+const POLL_INTERVAL_CLOCK_CAP = parseInt(process.env.POLL_INTERVAL_CLOCK_CAP || "60000", 10);
+const CLOCK_CAP_PROBE_TIMEOUT_MS = parseInt(process.env.CLOCK_CAP_PROBE_TIMEOUT_MS || "10000", 10);
+
 // ─── Demo mode (synthetic metrics, no SSH / nvidia-smi) ──
 // Used to exercise the dashboard + exporters on a laptop / CI without Sparks.
 const DEMO_MODE = _bool(process.env.SPARKDASH_DEMO, false);
@@ -140,6 +146,9 @@ export {
   HARDWARE_DEFAULTS,
   HOST_PATHS,
   EXPORTERS,
+  CLOCK_CAP_MONITORING,
+  POLL_INTERVAL_CLOCK_CAP,
+  CLOCK_CAP_PROBE_TIMEOUT_MS,
   DEMO_MODE,
   ROOT,
 };

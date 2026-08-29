@@ -6,7 +6,8 @@ import { ComfyProbe } from "../collectors/ComfyProbe.js";
 import { HermesProbe } from "../collectors/HermesProbe.js";
 import { TailscaleProbe } from "../collectors/TailscaleProbe.js";
 import { llmDaily } from "../collectors/LlmDaily.js";
-import { DemoCollector, DemoLlmProbe } from "../collectors/DemoCollector.js";
+import { DemoCollector, DemoLlmProbe, DemoClockCapProbe } from "../collectors/DemoCollector.js";
+import { ClockCapProbe, defaultClockCap } from "../collectors/ClockCapProbe.js";
 import { sshTest, sshExec } from "../collectors/ssh.js";
 import {
   POLL_INTERVAL_GPU,
@@ -23,6 +24,8 @@ import {
   COMFY_PORT,
   HOST_PATHS,
   DEMO_MODE,
+  CLOCK_CAP_MONITORING,
+  POLL_INTERVAL_CLOCK_CAP,
 } from "../config.js";
 
 const ONLINE_GRACE_MS = 10000;
@@ -68,6 +71,16 @@ export class SparkMonitor {
     this.hermesProbe = this._hermesMonitoringEnabled(spark)
       ? new HermesProbe(spark)
       : null;
+
+    // gb10-clock-cap unit state (opt-in via CLOCK_CAP_MONITORING, all units).
+    // Slow SSH poll; surfaced in the snapshot as `clockCap` for exporters.
+    /** @type {ClockCapProbe | DemoClockCapProbe | null} */
+    this.clockCapProbe = CLOCK_CAP_MONITORING
+      ? this._demo
+        ? new DemoClockCapProbe(spark, this.collector)
+        : new ClockCapProbe(spark)
+      : null;
+    this._clockCap = defaultClockCap(CLOCK_CAP_MONITORING);
     // Hermes status is surfaced in the snapshot (not under `metrics`) and is
     // always present so the UI never has to special-case a missing field.
     this._hermes = {
@@ -206,6 +219,7 @@ export class SparkMonitor {
       this._hermes.status = "idle";
     }
     this._hermes.monitoring = this._hermesMonitoringEnabled();
+    if (this.clockCapProbe) this.clockCapProbe.setTarget(spark);
     if (this._running && wasHermes !== this._hermesMonitoringEnabled()) {
       this._restartHermesPollInterval();
     }
@@ -363,6 +377,11 @@ export class SparkMonitor {
     this._restartComfyPollInterval();
     this._restartHermesPollInterval();
     this._restartTailscalePollInterval();
+    if (this.clockCapProbe) {
+      this._intervals.push(
+        setInterval(() => this._pollDomain("clockCap"), POLL_INTERVAL_CLOCK_CAP)
+      );
+    }
     // Liveness on a slightly slower cadence
     this._intervals.push(setInterval(() => this._checkOnline(), POLL_INTERVAL_LIVENESS));
     console.log(`[SparkMonitor] ${this.spark.id} started`);
@@ -421,6 +440,7 @@ export class SparkMonitor {
       comfyPort: this._comfyPort(),
       tailscaleMonitoring: tailscaleOn,
       hermes: this._hermes,
+      clockCap: this._clockCap,
       hardware: this._hardwareSummary,
       metrics: {
         // NOTE: no `timestamp` here on purpose. The broadcast path skips
@@ -510,6 +530,7 @@ export class SparkMonitor {
       this._pollDomain("comfy"),
       this._pollDomain("hermes"),
       this._pollDomain("tailscale"),
+      this._pollDomain("clockCap"),
     ]);
   }
 
@@ -522,6 +543,7 @@ export class SparkMonitor {
     if (domain === "comfy" && !this._comfyMonitoringEnabled()) return;
     if (domain === "hermes" && !this._hermesMonitoringEnabled()) return;
     if (domain === "tailscale" && !this._tailscaleMonitoringEnabled()) return;
+    if (domain === "clockCap" && !this.clockCapProbe) return;
     this._inflight[domain] = true;
     try {
       let result;
@@ -558,6 +580,9 @@ export class SparkMonitor {
           break;
         case "hermes":
           result = this.hermesProbe ? await this.hermesProbe.check() : null;
+          break;
+        case "clockCap":
+          result = await this.clockCapProbe.probe();
           break;
       }
       // Re-check after the await — `stop()`/`updateSpark()` may have torn
@@ -610,6 +635,9 @@ export class SparkMonitor {
           break;
         case "hermes":
           this.applyHermesCheck(result);
+          break;
+        case "clockCap":
+          if (result) this._clockCap = { ...this._clockCap, ...result, monitoring: true };
           break;
       }
       this._lastUpdate[domain] = Date.now();

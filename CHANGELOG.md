@@ -9,6 +9,7 @@ Format: version sections are listed newest first.
 - **Prometheus exporter** — `GET /metrics` (on by default) exposes every unit's GPU / CPU / unified memory / storage / network / LLM / ComfyUI / Tailnet / Hermes values in text exposition format, `sparkdash_` prefixed; `llm_output_tokens_total` and `llm_preemptions_total` are true counters
 - **InfluxDB exporter** — opt-in line-protocol push to the v2 write API (`INFLUX_URL`, `INFLUX_BUCKET`, `INFLUX_TOKEN`, …) on its own timer, independent of the WebSocket diff cache; status at `GET /api/exporters`
 - **Demo mode** — `SPARKDASH_DEMO=1` swaps in synthetic collectors so the UI and exporters run without SSH / nvidia-smi
+- **Clock cap monitoring** — opt-in `CLOCK_CAP_MONITORING=1` polls the gb10-clock-cap unit (read-only) into `snapshot().clockCap` and exports `gpu_clock_cap_*`
 - **observability/** — docker compose mini-stack (Prometheus, InfluxDB 2, Grafana) with provisioned datasources + fleet dashboard; docs in `docs/OBSERVABILITY.md`
 
 

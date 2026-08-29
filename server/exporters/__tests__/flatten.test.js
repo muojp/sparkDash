@@ -125,6 +125,17 @@ test("llm entries are labelled by port from snap.llmPorts and optional fields ar
   assert.equal(find(out, "llm_kv_cache_usage_ratio", { port: "8889" }), undefined);
 });
 
+test("clock cap: exported only when monitoring is on and probed", () => {
+  const base = { id: "c", name: "C", online: true, metrics: {} };
+  assert.equal(flattenSnapshot({ ...base, clockCap: { monitoring: false, installed: true, active: true } }).some((x) => x.name.startsWith("gpu_clock_cap")), false);
+  assert.equal(flattenSnapshot({ ...base, clockCap: { monitoring: true, installed: null, active: null } }).some((x) => x.name.startsWith("gpu_clock_cap")), false);
+  const out = flattenSnapshot({ ...base, clockCap: { monitoring: true, installed: true, enabled: true, active: false, smClockMHz: 3003 } });
+  assert.equal(find(out, "gpu_clock_cap_installed").value, 1);
+  assert.equal(find(out, "gpu_clock_cap_enabled").value, 1);
+  assert.equal(find(out, "gpu_clock_cap_active").value, 0);
+  assert.equal(find(out, "gpu_clock_cap_sm_clock_mhz").value, 3003);
+});
+
 test("comfy / tailscale / hermes", () => {
   const out = flattenSnapshot(snap);
   assert.equal(find(out, "comfy_queue_pending", { port: "8188" }).value, 3);

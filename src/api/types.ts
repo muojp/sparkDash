@@ -161,6 +161,17 @@ export interface HermesUpdatesResponse {
   pending: { count: number; headSha: string | null; commits: HermesPendingCommit[] } | null;
 }
 
+/** gb10-clock-cap unit state polled by the server (CLOCK_CAP_MONITORING); null = not probed yet. */
+export interface ClockCapState {
+  monitoring: boolean;
+  installed: boolean | null;
+  enabled: boolean | null;
+  active: boolean | null;
+  smClockMHz: number | null;
+  checkedAt: number | null;
+  error: string | null;
+}
+
 // ─── Hardware info ───────────────────────────────────────
 export interface HardwareInfo {
   device: string;

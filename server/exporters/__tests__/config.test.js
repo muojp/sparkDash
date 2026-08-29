@@ -10,7 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 function load(env) {
   const out = execFileSync(
     process.execPath,
-    ["--input-type=module", "-e", 'import("./server/config.js").then(m => console.log(JSON.stringify({ EXPORTERS: m.EXPORTERS, DEMO_MODE: m.DEMO_MODE })))'],
+    ["--input-type=module", "-e", 'import("./server/config.js").then(m => console.log(JSON.stringify({ EXPORTERS: m.EXPORTERS, DEMO_MODE: m.DEMO_MODE, CLOCK_CAP_MONITORING: m.CLOCK_CAP_MONITORING, POLL_INTERVAL_CLOCK_CAP: m.POLL_INTERVAL_CLOCK_CAP })))'],
     { cwd: ROOT, env: { PATH: process.env.PATH, ...env }, encoding: "utf8" }
   );
   return JSON.parse(out);
@@ -25,6 +25,15 @@ test("defaults: prometheus on at /metrics, influx off, demo off", () => {
   assert.equal(EXPORTERS.influxIntervalMs, 10000);
   assert.equal(EXPORTERS.influxTimeoutMs, 5000);
   assert.equal(DEMO_MODE, false);
+});
+
+test("clock cap monitoring is off by default, 60 s cadence, env-overridable", () => {
+  const d = load({});
+  assert.equal(d.CLOCK_CAP_MONITORING, false);
+  assert.equal(d.POLL_INTERVAL_CLOCK_CAP, 60000);
+  const e = load({ CLOCK_CAP_MONITORING: "1", POLL_INTERVAL_CLOCK_CAP: "15000" });
+  assert.equal(e.CLOCK_CAP_MONITORING, true);
+  assert.equal(e.POLL_INTERVAL_CLOCK_CAP, 15000);
 });
 
 test("boolean env parsing accepts 0/false/no/off (case-insensitive) and treats anything else as true", () => {
