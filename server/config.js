@@ -82,6 +82,28 @@ const HARDWARE_DEFAULTS = {
   CPU_TDP_FALLBACK: 185,
 };
 
+// ─── Metrics exporters (Prometheus pull / InfluxDB push) ─
+// Env-only on purpose: targets + tokens are infrastructure, not UI settings.
+const _bool = (v, dflt) => (v == null || v === "" ? dflt : !/^(0|false|no|off)$/i.test(v));
+const EXPORTERS = {
+  /** Metric name / measurement prefix. */
+  prefix: process.env.METRICS_PREFIX || "sparkdash_",
+  /** GET /metrics (Prometheus text format). Default on — read-only, same trust model as the rest of the API. */
+  prometheusEnabled: _bool(process.env.PROMETHEUS_METRICS, true),
+  prometheusPath: process.env.PROMETHEUS_METRICS_PATH || "/metrics",
+  /** InfluxDB v2 write API push — enabled when INFLUX_URL is set. */
+  influxUrl: process.env.INFLUX_URL || "",
+  influxOrg: process.env.INFLUX_ORG || "",
+  influxBucket: process.env.INFLUX_BUCKET || "",
+  influxToken: process.env.INFLUX_TOKEN || "",
+  influxIntervalMs: parseInt(process.env.INFLUX_INTERVAL_MS || "10000", 10),
+  influxTimeoutMs: parseInt(process.env.INFLUX_TIMEOUT_MS || "5000", 10),
+};
+
+// ─── Demo mode (synthetic metrics, no SSH / nvidia-smi) ──
+// Used to exercise the dashboard + exporters on a laptop / CI without Sparks.
+const DEMO_MODE = _bool(process.env.SPARKDASH_DEMO, false);
+
 // ─── Host paths for Docker bind mounts ───────────────────
 const HOST_PATHS = {
   PROC: process.env.HOST_PROC_PATH || "/host/proc",
@@ -117,5 +139,7 @@ export {
   UNIT_CONVERSION,
   HARDWARE_DEFAULTS,
   HOST_PATHS,
+  EXPORTERS,
+  DEMO_MODE,
   ROOT,
 };

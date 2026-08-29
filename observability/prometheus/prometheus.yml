@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: sparkdash
+    metrics_path: /metrics
+    static_configs:
+      # sparkDash on the Docker host (BIND_HOST must not be 127.0.0.1 — use 0.0.0.0).
+      # Add real Sparks here as well, e.g. "192.168.0.100:5555".
+      - targets: ["host.docker.internal:5555"]
+        labels:
+          site: local-mini

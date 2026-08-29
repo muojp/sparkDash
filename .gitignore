@@ -24,3 +24,10 @@ HANDOFF.md
 HANDOFF-HERMES.md
 handoff.md
 test/
+
+# observability mini-stack: demo registry is tracked, runtime state is not
+!observability/demo/sparks.json
+observability/demo/settings.json
+observability/demo/llm-daily.json
+observability/demo/sparks-secrets.json
+observability/demo/.secrets-key

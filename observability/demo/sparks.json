@@ -1,0 +1,38 @@
+{
+  "sparks": [
+    {
+      "id": "dgx01",
+      "name": "DGX Spark 01 (demo)",
+      "kind": "spark",
+      "lanIp": "192.168.0.100",
+      "cx7Ip": "10.10.0.1",
+      "isLocal": false,
+      "ssh": { "host": "192.168.0.100", "user": "nvidia", "auth": "key" },
+      "llmPorts": [8888, 8889],
+      "role": "head",
+      "hermesMonitoring": true
+    },
+    {
+      "id": "dgx02",
+      "name": "DGX Spark 02 (demo)",
+      "kind": "spark",
+      "lanIp": "192.168.0.101",
+      "cx7Ip": "10.10.0.2",
+      "isLocal": false,
+      "ssh": { "host": "192.168.0.101", "user": "nvidia", "auth": "key" },
+      "role": "worker",
+      "workerLabel": "cluster-a",
+      "workerHeadId": "dgx01"
+    },
+    {
+      "id": "rtx-box",
+      "name": "RTX workstation (demo)",
+      "kind": "host",
+      "lanIp": "192.168.0.150",
+      "isLocal": false,
+      "ssh": { "host": "192.168.0.150", "user": "muo", "auth": "key" },
+      "llmPorts": [8000],
+      "role": "standalone"
+    }
+  ]
+}

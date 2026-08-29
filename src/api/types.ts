@@ -238,6 +238,9 @@ export interface StorageMetrics {
   percentage: number;
   readSpeed: number;
   writeSpeed: number;
+  /** Cumulative bytes read / written since boot (local units only; null when unavailable). */
+  readBytes?: number | null;
+  writeBytes?: number | null;
   /** Present when device is in disabledDevices; still returned for Settings UI */
   disabled?: boolean;
 }
@@ -247,6 +250,9 @@ export interface NetworkInterface {
   name: string;
   rxSpeed: number;
   txSpeed: number;
+  /** Cumulative bytes since boot from /proc/net/dev (exporter counters). */
+  rxBytes?: number;
+  txBytes?: number;
   /** IPv4 address, e.g. "192.168.1.143". null when unset. */
   ip: string | null;
   /** Interface operstate: "up" | "down" | "unknown" */

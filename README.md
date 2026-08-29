@@ -84,6 +84,7 @@ Full history: [CHANGELOG.md](./CHANGELOG.md)
 | **Secrets** | SSH passwords AES-256-GCM encrypted; never in `sparks.json` or API responses |
 | **Docker-first** | Single privileged container for host metrics; prod and dev Compose files |
 | **Hot config** | Add / edit / remove / reorder Sparks from the UI with no process restart |
+| **Grafana export** | Prometheus `GET /metrics` (pull, on by default) and InfluxDB line-protocol push; every value on the dashboard, `sparkdash_` prefixed, plus a local Prometheus + InfluxDB + Grafana mini-stack — see [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) |
 
 ---
 
@@ -320,10 +321,13 @@ sparkDash/
 │   └── theme / CSS      Tailwind v4 + four themes
 ├── server/              Express + WebSocket (plain JS ESM)
 │   ├── sparks/          SparkRegistry, SparkMonitor
-│   ├── collectors/      SystemCollector, LlmProbe, ssh
+│   ├── collectors/      SystemCollector, LlmProbe, ssh, DemoCollector
+│   ├── exporters/       Prometheus /metrics + InfluxDB push (flatten → render)
 │   ├── secretsStore.js  Encrypted password persistence
 │   └── validate.js      Host/user validation (SSRF-minded)
 ├── config/              Runtime state (volume; secrets gitignored)
+├── observability/       Local Prometheus + InfluxDB + Grafana mini-stack (compose + provisioning)
+├── docs/                OBSERVABILITY.md
 ├── assets/              Screenshots
 ├── Dockerfile           Production multi-stage arm64
 ├── docker-compose.yml   Production
@@ -354,6 +358,8 @@ sparkDash/
 | DELETE | `/api/sparks/:id/llm-ports/:port` | Remove an LLM port (hot) |
 | PUT | `/api/sparks/:id/llm-port` | LLM port — backward-compat (hot) |
 | GET | `/api/sparks/:id/llm/daily` | Daily busy decode/prefill tok/s (`port`, `days`) |
+| GET | `/metrics` | Prometheus text exposition of every unit's metrics ([docs](./docs/OBSERVABILITY.md)) |
+| GET | `/api/exporters` | Exporter status (Prometheus path, last InfluxDB push result) |
 | GET | `/api/settings` | Global settings |
 | PUT | `/api/settings` | Update global settings |
 | WS | `/ws` | Real-time metrics stream |
@@ -402,6 +408,9 @@ Copy `.env.example` to `.env` if needed:
 | `HOST_SYS_PATH` | `/host/sys` | Host sys mount |
 | `HOST_ROOT_PATH` | `/host/root` | Host root mount |
 | `SSH_IDENTITY_FILE` | _(unset)_ | Path **inside the process** to a private key (`ssh -i`). Use when the bind-mount is not a default OpenSSH name. |
+| `PROMETHEUS_METRICS` | `true` | Serve `GET /metrics` for Prometheus (`PROMETHEUS_METRICS_PATH`, `METRICS_PREFIX` to customise) |
+| `INFLUX_URL` | _(unset)_ | Push line protocol to InfluxDB (`INFLUX_ORG`, `INFLUX_BUCKET`, `INFLUX_TOKEN`, `INFLUX_INTERVAL_MS`) — see [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) |
+| `SPARKDASH_DEMO` | `false` | Synthetic metrics for every unit — for trying the UI / exporters without hardware |
 
 > The listener defaults to `127.0.0.1` (loopback) so the dashboard — which can SSH into and
 > power off your Sparks — isn't reachable on the LAN by default. Set `BIND_HOST` to the host's

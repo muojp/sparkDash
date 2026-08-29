@@ -1,0 +1,22 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: sparkdash-prom
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+  - name: InfluxDB
+    uid: sparkdash-influx
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    editable: true
+    jsonData:
+      version: Flux
+      organization: sparkdash
+      defaultBucket: sparkdash
+      tlsSkipVerify: true
+    secureJsonData:
+      token: ${INFLUX_TOKEN}

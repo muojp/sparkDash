@@ -21,6 +21,7 @@ import { showcaseManager } from "./collectors/ShowcaseManager.js";
 import { llmProbeHost } from "./collectors/llmHost.js";
 import { llmDaily } from "./collectors/LlmDaily.js";
 import { compareSemver, getLatestRelease } from "./collectors/HermesReleases.js";
+import { installExporters } from "./exporters/index.js";
 
 dotenv.config();
 
@@ -1271,6 +1272,11 @@ app.post("/api/sparks/:id/wake", async (req, res) => {
   }
 });
 
+// ─── Metrics exporters (Prometheus GET /metrics, InfluxDB push) ──
+// Must be registered before the static / SPA catch-all below (Express
+// matches in registration order). Env-configured; see config.js EXPORTERS.
+const exporters = installExporters({ app, getSnapshots: orderedSnapshots });
+
 // ─── Static files (built frontend) ───────────────────────
 const distDir = path.join(ROOT, "dist");
 const indexHtml = path.join(distDir, "index.html");
@@ -1414,6 +1420,7 @@ function shutdown(signal) {
       clearInterval(broadcastTimer);
       broadcastTimer = null;
     }
+    exporters.stop();
     for (const m of monitors.values()) m.stop();
     monitors.clear();
   } catch (err) {

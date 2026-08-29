@@ -6,6 +6,7 @@ import { ComfyProbe } from "../collectors/ComfyProbe.js";
 import { HermesProbe } from "../collectors/HermesProbe.js";
 import { TailscaleProbe } from "../collectors/TailscaleProbe.js";
 import { llmDaily } from "../collectors/LlmDaily.js";
+import { DemoCollector, DemoLlmProbe } from "../collectors/DemoCollector.js";
 import { sshTest, sshExec } from "../collectors/ssh.js";
 import {
   POLL_INTERVAL_GPU,
@@ -21,6 +22,7 @@ import {
   LLM_PORT,
   COMFY_PORT,
   HOST_PATHS,
+  DEMO_MODE,
 } from "../config.js";
 
 const ONLINE_GRACE_MS = 10000;
@@ -39,13 +41,16 @@ export class SparkMonitor {
     this._onWolMac = typeof options.onWolMac === "function" ? options.onWolMac : null;
     this._onHermesChange =
       typeof options.onHermesChange === "function" ? options.onHermesChange : null;
-    this.collector = new SystemCollector(spark);
+    // SPARKDASH_DEMO=1 swaps in synthetic collectors (no SSH / nvidia-smi)
+    // for every unit — used to exercise the UI + exporters without hardware.
+    this._demo = DEMO_MODE;
+    this.collector = this._demo ? new DemoCollector(spark) : new SystemCollector(spark);
 
     // One LlmProbe per port — none when LLM monitoring is off
     this.llmProbes = new Map();
     if (this._llmMonitoringEnabled(spark)) {
       for (const port of this._llmPorts()) {
-        this.llmProbes.set(port, new LlmProbe(spark, port));
+        this.llmProbes.set(port, this._newLlmProbe(spark, port));
       }
     }
 
@@ -150,7 +155,7 @@ export class SparkMonitor {
         existing.spark = spark;
         this.llmProbes.set(port, existing);
       } else {
-        this.llmProbes.set(port, new LlmProbe(spark, port));
+        this.llmProbes.set(port, this._newLlmProbe(spark, port));
       }
     }
     if (!this._llmMonitoringEnabled()) {
@@ -217,6 +222,10 @@ export class SparkMonitor {
     if (this._running && wasTailscale !== this._tailscaleMonitoringEnabled()) {
       this._restartTailscalePollInterval();
     }
+  }
+
+  _newLlmProbe(spark, port) {
+    return this._demo ? new DemoLlmProbe(spark, port) : new LlmProbe(spark, port);
   }
 
   /**
@@ -437,6 +446,7 @@ export class SparkMonitor {
   // ─── Uptime helper ─────────────────────────────────────────
   /** Read system uptime from /proc/uptime (local or via SSH). */
   async _readUptime() {
+    if (this._demo) return this.collector.uptimeSeconds();
     let content;
     if (this.spark.isLocal) {
       const mapped = path.join(HOST_PATHS.PROC, "uptime");
@@ -454,7 +464,7 @@ export class SparkMonitor {
     if (!this._running || this._inflight.online) return;
     this._inflight.online = true;
     try {
-      if (this.spark.isLocal) {
+      if (this.spark.isLocal || this._demo) {
         await this.collector.pingHost();
       } else {
         const result = await sshTest(this.spark);

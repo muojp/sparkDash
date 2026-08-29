@@ -603,6 +603,8 @@ export class SystemCollector {
           percentage,
           readSpeed: io.readSpeed,
           writeSpeed: io.writeSpeed,
+          readBytes: io.readBytes ?? null,
+          writeBytes: io.writeBytes ?? null,
           disabled: isDisabled,
         });
       } catch (err) {
@@ -693,10 +695,17 @@ export class SystemCollector {
       const last = this.lastDiskIO.get(dev);
       this.lastDiskIO.set(dev, { sectorsRead, sectorsWritten, time: now });
 
-      if (!last) return { readSpeed: 0, writeSpeed: 0 };
+      // Cumulative bytes since boot (sectors are always 512 B in /sys/block stat).
+      // Exposed alongside the rates so exporters can publish true counters —
+      // a rate sampled every N s misses bursts between samples; a counter
+      // never loses bytes, only time resolution.
+      const readBytes = sectorsRead * 512;
+      const writeBytes = sectorsWritten * 512;
+
+      if (!last) return { readSpeed: 0, writeSpeed: 0, readBytes, writeBytes };
 
       const dtMs = now - last.time;
-      if (dtMs <= 0) return { readSpeed: 0, writeSpeed: 0 };
+      if (dtMs <= 0) return { readSpeed: 0, writeSpeed: 0, readBytes, writeBytes };
 
       const readSpeed = Math.round(((sectorsRead - last.sectorsRead) * 512 / dtMs) * 1000);
       const writeSpeed = Math.round(((sectorsWritten - last.sectorsWritten) * 512 / dtMs) * 1000);
@@ -704,9 +713,11 @@ export class SystemCollector {
       return {
         readSpeed: Math.max(0, readSpeed),
         writeSpeed: Math.max(0, writeSpeed),
+        readBytes,
+        writeBytes,
       };
     } catch {
-      return { readSpeed: 0, writeSpeed: 0 };
+      return { readSpeed: 0, writeSpeed: 0, readBytes: null, writeBytes: null };
     }
   }
 
@@ -737,6 +748,8 @@ export class SystemCollector {
         name: iface,
         rxSpeed: Math.max(0, Math.round(rxSpeed)),
         txSpeed: Math.max(0, Math.round(txSpeed)),
+        rxBytes,
+        txBytes,
         ip: ipMap.get(iface) || null,
         operstate: await this._getInterfaceOperstate(iface),
         disabled: false,
@@ -1213,6 +1226,8 @@ export class SystemCollector {
           name: iface,
           rxSpeed: Math.max(0, Math.round(rxSpeed)),
           txSpeed: Math.max(0, Math.round(txSpeed)),
+          rxBytes,
+          txBytes,
           ip: ipMap.get(iface) || null,
           operstate: operstateMap.get(iface) || "unknown",
           disabled: false,
