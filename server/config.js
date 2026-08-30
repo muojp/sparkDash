@@ -88,8 +88,8 @@ const _bool = (v, dflt) => (v == null || v === "" ? dflt : !/^(0|false|no|off)$/
 const EXPORTERS = {
   /** Metric name / measurement prefix. */
   prefix: process.env.METRICS_PREFIX || "sparkdash_",
-  /** GET /metrics (Prometheus text format). Default on — read-only, same trust model as the rest of the API. */
-  prometheusEnabled: _bool(process.env.PROMETHEUS_METRICS, true),
+  /** Optional GET /metrics (Prometheus text format). Stock DGX Spark has no Prometheus. */
+  prometheusEnabled: _bool(process.env.PROMETHEUS_METRICS, false),
   prometheusPath: process.env.PROMETHEUS_METRICS_PATH || "/metrics",
   /** InfluxDB v2 write API push — enabled when INFLUX_URL is set. */
   influxUrl: process.env.INFLUX_URL || "",

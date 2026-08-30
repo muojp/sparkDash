@@ -80,3 +80,16 @@ test("disk I/O returns cumulative readBytes/writeBytes (sectors × 512) plus rat
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("RAM parser exposes swap occupancy plus swap-in and major-fault rates", () => {
+  const c = localCollector();
+  const meminfo = "MemTotal: 100000 kB\nMemAvailable: 40000 kB\nSwapTotal: 8000 kB\nSwapFree: 6000 kB\n";
+  const first = c._parseRamUsage(meminfo, "pswpin 100\npswpout 20\npgmajfault 70\n", 1000);
+  assert.equal(first.swap.used, 2);
+  assert.equal(first.swap.total, 8);
+  assert.equal(first.swap.inPagesPerSec, 0);
+  const second = c._parseRamUsage(meminfo, "pswpin 110\npswpout 24\npgmajfault 76\n", 3000);
+  assert.equal(second.swap.inPagesPerSec, 5);
+  assert.equal(second.swap.outPagesPerSec, 2);
+  assert.equal(second.swap.majorFaultsPerSec, 3);
+});

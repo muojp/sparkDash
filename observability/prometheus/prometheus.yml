@@ -7,10 +7,7 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       # One sparkDash instance exposes every unit it monitors.
-      # Fleet head dgx01 (exports dgx01 + dgx02).
-      - targets: ["192.168.0.100:5555"]
+      # Default: sparkDash running on the same Docker host.
+      - targets: ["host.docker.internal:5555"]
         labels:
-          site: lab
-      # For a laptop demo (SPARKDASH_DEMO=1 on the Docker host) add:
-      # - targets: ["host.docker.internal:5555"]
-      #   labels: { site: demo }
+          site: local

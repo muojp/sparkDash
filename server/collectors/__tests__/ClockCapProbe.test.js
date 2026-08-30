@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseClockCapStatus, defaultClockCap, ClockCapProbe, CLOCK_CAP_STATUS_CMD } from "../ClockCapProbe.js";
+import {
+  parseClockCapStatus,
+  defaultClockCap,
+  ClockCapProbe,
+  CLOCK_CAP_STATUS_CMD,
+  clockCapActionCommand,
+} from "../ClockCapProbe.js";
 
 test("parses enabled/active/clock", () => {
   assert.deepEqual(parseClockCapStatus("cap:enabled|active|2177\n"), { installed: true, enabled: true, active: true, smClockMHz: 2177 });
@@ -26,6 +32,20 @@ test("status command is read-only (no start/stop/enable/disable)", () => {
   assert.match(CLOCK_CAP_STATUS_CMD, /is-active/);
   assert.doesNotMatch(CLOCK_CAP_STATUS_CMD, /systemctl (start|stop|enable|disable|restart|daemon-reload)/);
   assert.doesNotMatch(CLOCK_CAP_STATUS_CMD, /-lgc|-rgc|sudo/);
+});
+
+test("runtime toggle uses only the two sudoers-whitelisted commands", () => {
+  assert.equal(
+    clockCapActionCommand(true),
+    "sudo -n systemctl start gb10-clock-cap.service"
+  );
+  assert.equal(
+    clockCapActionCommand(false),
+    "sudo -n systemctl stop gb10-clock-cap.service"
+  );
+  assert.doesNotMatch(clockCapActionCommand(true), /enable|disable|restart|daemon-reload/);
+  assert.doesNotMatch(clockCapActionCommand(false), /enable|disable|restart|daemon-reload/);
+  assert.throws(() => clockCapActionCommand("yes"), /boolean/);
 });
 
 test("defaultClockCap shape", () => {

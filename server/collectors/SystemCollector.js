@@ -89,6 +89,7 @@ export class SystemCollector {
     this.lastRaplReading = null;
     this.lastDiskIO = new Map();
     this.currentDiskIOSpeeds = new Map();
+    this.lastVmStats = null;
 
     // Cached ARM detection (resolved lazily once; /proc/cpuinfo never changes
     // mid-process). Avoids a redundant host read on every CPU poll.
@@ -612,14 +613,51 @@ export class SystemCollector {
   // ─── RAM helpers ─────────────────────────────────────────
   async _getRamUsage() {
     const raw = await this._readHostFile("/proc/meminfo");
+    const vmstat = await this._readHostFile("/proc/vmstat");
+    return this._parseRamUsage(raw, vmstat);
+  }
+
+  _parseRamUsage(raw, vmstat, now = Date.now()) {
     const totalKB = this._parseMemTotal(raw);
     const availMatch = raw.match(/MemAvailable:\s+(\d+)\s+kB/);
+    const swapTotalMatch = raw.match(/SwapTotal:\s+(\d+)\s+kB/);
+    const swapFreeMatch = raw.match(/SwapFree:\s+(\d+)\s+kB/);
     const availKB = availMatch ? parseInt(availMatch[1]) : 0;
+    const swapTotalKB = swapTotalMatch ? parseInt(swapTotalMatch[1]) : 0;
+    const swapFreeKB = swapFreeMatch ? parseInt(swapFreeMatch[1]) : 0;
     const usedKB = totalKB - availKB;
+    const counters = Object.fromEntries(
+      String(vmstat).split("\n").map((line) => line.trim().split(/\s+/))
+        .filter(([key, value]) => ["pswpin", "pswpout", "pgmajfault"].includes(key) && /^\d+$/.test(value || ""))
+        .map(([key, value]) => [key, Number(value)])
+    );
+    const sample = {
+      swapInPages: counters.pswpin ?? null,
+      swapOutPages: counters.pswpout ?? null,
+      majorFaults: counters.pgmajfault ?? null,
+      time: now,
+    };
+    const previous = this.lastVmStats;
+    this.lastVmStats = sample;
+    const seconds = previous && now > previous.time ? (now - previous.time) / 1000 : 0;
+    const rate = (key) => seconds > 0 && sample[key] != null && previous[key] != null
+      ? Math.max(0, (sample[key] - previous[key]) / seconds)
+      : 0;
     return {
       used: Math.round(usedKB / 1024),
       total: Math.round(totalKB / 1024),
       percentage: totalKB > 0 ? Math.round((usedKB / totalKB) * 100) : 0,
+      swap: {
+        used: Math.round((swapTotalKB - swapFreeKB) / 1024),
+        total: Math.round(swapTotalKB / 1024),
+        percentage: swapTotalKB > 0 ? Math.round(((swapTotalKB - swapFreeKB) / swapTotalKB) * 100) : 0,
+        inPages: sample.swapInPages,
+        outPages: sample.swapOutPages,
+        inPagesPerSec: rate("swapInPages"),
+        outPagesPerSec: rate("swapOutPages"),
+        majorFaults: sample.majorFaults,
+        majorFaultsPerSec: rate("majorFaults"),
+      },
     };
   }
 
@@ -765,35 +803,26 @@ export class SystemCollector {
       const fields = raw.split(/\s+/);
       const sectorsRead = parseInt(fields[2]) || 0;
       const sectorsWritten = parseInt(fields[6]) || 0;
-      const now = Date.now();
-
-      const last = this.lastDiskIO.get(dev);
-      this.lastDiskIO.set(dev, { sectorsRead, sectorsWritten, time: now });
-
-      // Cumulative bytes since boot (sectors are always 512 B in /sys/block stat).
-      // Exposed alongside the rates so exporters can publish true counters —
-      // a rate sampled every N s misses bursts between samples; a counter
-      // never loses bytes, only time resolution.
-      const readBytes = sectorsRead * 512;
-      const writeBytes = sectorsWritten * 512;
-
-      if (!last) return { readSpeed: 0, writeSpeed: 0, readBytes, writeBytes };
-
-      const dtMs = now - last.time;
-      if (dtMs <= 0) return { readSpeed: 0, writeSpeed: 0, readBytes, writeBytes };
-
-      const readSpeed = Math.round(((sectorsRead - last.sectorsRead) * 512 / dtMs) * 1000);
-      const writeSpeed = Math.round(((sectorsWritten - last.sectorsWritten) * 512 / dtMs) * 1000);
-
-      return {
-        readSpeed: Math.max(0, readSpeed),
-        writeSpeed: Math.max(0, writeSpeed),
-        readBytes,
-        writeBytes,
-      };
+      return this._rateDiskIOSample(dev, sectorsRead, sectorsWritten);
     } catch {
       return { readSpeed: 0, writeSpeed: 0, readBytes: null, writeBytes: null };
     }
+  }
+
+  _rateDiskIOSample(dev, sectorsRead, sectorsWritten, now = Date.now()) {
+    const last = this.lastDiskIO.get(dev);
+    this.lastDiskIO.set(dev, { sectorsRead, sectorsWritten, time: now });
+    // Linux block-stat sectors are 512 B, independent of physical sector size.
+    const readBytes = sectorsRead * 512;
+    const writeBytes = sectorsWritten * 512;
+    if (!last || now <= last.time) return { readSpeed: 0, writeSpeed: 0, readBytes, writeBytes };
+    const seconds = (now - last.time) / 1000;
+    return {
+      readSpeed: Math.max(0, Math.round((readBytes - last.sectorsRead * 512) / seconds)),
+      writeSpeed: Math.max(0, Math.round((writeBytes - last.sectorsWritten * 512) / seconds)),
+      readBytes,
+      writeBytes,
+    };
   }
 
   // ─── RDMA helpers ─────────────────────────────────────────
@@ -1234,18 +1263,10 @@ export class SystemCollector {
 
   async _getRemoteRam() {
     try {
-      const cmd = "grep -E 'MemTotal|MemAvailable' /proc/meminfo 2>/dev/null";
+      const cmd = "grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo 2>/dev/null; echo '---'; grep -E '^(pswpin|pswpout|pgmajfault) ' /proc/vmstat 2>/dev/null";
       const output = await sshExec(this.spark, cmd);
-      const totalMatch = output.match(/MemTotal:\s+(\d+)\s+kB/);
-      const availMatch = output.match(/MemAvailable:\s+(\d+)\s+kB/);
-      const totalKB = totalMatch ? parseInt(totalMatch[1]) : 0;
-      const availKB = availMatch ? parseInt(availMatch[1]) : 0;
-      const usedKB = totalKB - availKB;
-      return {
-        used: Math.round(usedKB / 1024),
-        total: Math.round(totalKB / 1024),
-        percentage: totalKB > 0 ? Math.round((usedKB / totalKB) * 100) : 0,
-      };
+      const [meminfo = "", vmstat = ""] = output.split("---");
+      return this._parseRamUsage(meminfo, vmstat);
     } catch (err) {
       console.error(`[SystemCollector] Remote RAM error for ${this.spark.id}:`, err.message);
       return this._defaultRam();
@@ -1256,9 +1277,16 @@ export class SystemCollector {
     try {
       // Include root (/); exclude pseudo filesystems via -x and type filter
       const cmd =
-        "df -l -B1 -T -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs -x proc -x sysfs -x devpts -x cgroup -x cgroup2 2>/dev/null";
+        "df -l -B1 -T -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs -x proc -x sysfs -x devpts -x cgroup -x cgroup2 2>/dev/null; " +
+        "echo '---'; for p in /sys/block/*/stat; do set -- $(cat \"$p\" 2>/dev/null); echo \"$(basename $(dirname \"$p\")) ${3:-0} ${7:-0}\"; done";
       const output = await sshExec(this.spark, cmd);
-      const lines = output.trim().split("\n").slice(1); // Skip header
+      const [dfOutput = "", statOutput = ""] = output.split("---");
+      const lines = dfOutput.trim().split("\n").slice(1); // Skip header
+      const statByDevice = new Map(statOutput.trim().split("\n").map((line) => {
+        const [device, read, written] = line.trim().split(/\s+/);
+        return [device, { read: Number(read), written: Number(written) }];
+      }).filter(([device, stat]) => device && Number.isFinite(stat.read) && Number.isFinite(stat.written)));
+      const now = Date.now();
       const disks = [];
       const disabledDevices = this.spark.disabledDevices || [];
       const PSEUDO = new Set([
@@ -1283,6 +1311,11 @@ export class SystemCollector {
         if (PSEUDO.has((type || "").toLowerCase())) continue;
 
         const device = fsys.split("/").pop() || fsys;
+        const parentDev = this._blockParentDevice(device);
+        const rawIo = statByDevice.get(parentDev);
+        const io = rawIo
+          ? this._rateDiskIOSample(parentDev, rawIo.read, rawIo.written, now)
+          : { readSpeed: 0, writeSpeed: 0, readBytes: null, writeBytes: null };
         const isDisabled =
           disabledDevices.includes(device) || disabledDevices.includes(mount);
 
@@ -1293,8 +1326,10 @@ export class SystemCollector {
           total: Math.round(parseInt(size) / 1024 / 1024),
           available: Math.round(parseInt(avail) / 1024 / 1024),
           percentage: parseInt(pct) || 0,
-          readSpeed: 0,
-          writeSpeed: 0,
+          readSpeed: io.readSpeed,
+          writeSpeed: io.writeSpeed,
+          readBytes: io.readBytes,
+          writeBytes: io.writeBytes,
           disabled: isDisabled,
         });
       }
@@ -1685,7 +1720,7 @@ export class SystemCollector {
   }
 
   _defaultRam() {
-    return { used: 0, total: 0, percentage: 0 };
+    return { used: 0, total: 0, percentage: 0, swap: null };
   }
 
   _defaultNetwork() {

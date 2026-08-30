@@ -172,6 +172,16 @@ export interface ClockCapState {
   error: string | null;
 }
 
+/** Current unit state returned by the on-demand clock-cap API. */
+export interface ClockCapStatus {
+  installed: boolean;
+  /** Boot enablement; the UI's runtime toggle does not change this. */
+  enabled: boolean;
+  /** Whether the cap is applied for the current boot. */
+  active: boolean;
+  smClockMHz: number | null;
+}
+
 // ─── Hardware info ───────────────────────────────────────
 export interface HardwareInfo {
   device: string;
@@ -239,6 +249,18 @@ export interface RamMetrics {
   used: number;
   total: number;
   percentage: number;
+  /** Host swap occupancy and VM paging counters/rates. null if unavailable. */
+  swap?: null | {
+    used: number;
+    total: number;
+    percentage: number;
+    inPages: number | null;
+    outPages: number | null;
+    inPagesPerSec: number;
+    outPagesPerSec: number;
+    majorFaults: number | null;
+    majorFaultsPerSec: number;
+  };
 }
 
 // ─── Storage metrics ─────────────────────────────────────

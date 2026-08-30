@@ -16,9 +16,9 @@ function load(env) {
   return JSON.parse(out);
 }
 
-test("defaults: prometheus on at /metrics, influx off, demo off", () => {
+test("defaults: prometheus off at /metrics, influx off, demo off", () => {
   const { EXPORTERS, DEMO_MODE } = load({});
-  assert.equal(EXPORTERS.prometheusEnabled, true);
+  assert.equal(EXPORTERS.prometheusEnabled, false);
   assert.equal(EXPORTERS.prometheusPath, "/metrics");
   assert.equal(EXPORTERS.prefix, "sparkdash_");
   assert.equal(EXPORTERS.influxUrl, "");

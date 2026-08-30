@@ -1,9 +1,9 @@
-import { useState } from "react";
-import type { SparkSnapshot } from "../../api/types";
-import { shutdownSpark, wakeSpark } from "../../api/client";
+import { useEffect, useState } from "react";
+import type { ClockCapStatus, SparkSnapshot } from "../../api/types";
+import { fetchClockCap, setClockCap, shutdownSpark, wakeSpark } from "../../api/client";
 import { ConfirmShutdownDialog } from "../ConfirmShutdownDialog";
 import { openHermesUpdateDialog } from "../../hooks/useHermesUpdateDialog";
-import { EditIcon, PowerOffIcon, PowerOnIcon, RotateIcon } from "../ui/icons";
+import { BoltIcon, EditIcon, PowerOffIcon, PowerOnIcon, RotateIcon } from "../ui/icons";
 
 interface SparkActionsProps {
   spark: SparkSnapshot;
@@ -23,6 +23,26 @@ export function SparkActions({ spark, onEdit, className }: SparkActionsProps) {
   const [powerLoading, setPowerLoading] = useState(false);
   const [powerMsg, setPowerMsg] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
   const [shutdownOpen, setShutdownOpen] = useState(false);
+  const [capStatus, setCapStatus] = useState<ClockCapStatus | null>(null);
+  const [capLoading, setCapLoading] = useState(false);
+
+  useEffect(() => {
+    if (!online) {
+      setCapStatus(null);
+      return;
+    }
+    let cancelled = false;
+    fetchClockCap(spark.id)
+      .then((status) => {
+        if (!cancelled) setCapStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setCapStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [spark.id, online]);
 
   const hermes = spark.hermes;
   const hermesRunning = hermes?.status === "running";
@@ -65,6 +85,30 @@ export function SparkActions({ spark, onEdit, className }: SparkActionsProps) {
       });
     } finally {
       setPowerLoading(false);
+      setTimeout(() => setPowerMsg(null), 5000);
+    }
+  }
+
+  async function handleClockCapToggle() {
+    if (!capStatus) return;
+    setCapLoading(true);
+    setPowerMsg(null);
+    try {
+      const next = await setClockCap(spark.id, !capStatus.active);
+      setCapStatus(next);
+      setPowerMsg({
+        text: next.active
+          ? `GPU clock cap on${next.smClockMHz != null ? ` (SM ${next.smClockMHz} MHz)` : ""}`
+          : "GPU clock cap off — stock clocks until reboot",
+        tone: "ok",
+      });
+    } catch (err: unknown) {
+      setPowerMsg({
+        text: err instanceof Error ? err.message : "Clock cap toggle failed",
+        tone: "err",
+      });
+    } finally {
+      setCapLoading(false);
       setTimeout(() => setPowerMsg(null), 5000);
     }
   }
@@ -126,6 +170,26 @@ export function SparkActions({ spark, onEdit, className }: SparkActionsProps) {
                 {hermes.behindCommits != null ? hermes.behindCommits : "!"}
               </span>
             )}
+          </button>
+        )}
+        {online && capStatus?.installed && (
+          <button
+            type="button"
+            onClick={() => void handleClockCapToggle()}
+            disabled={capLoading}
+            title={
+              capStatus.active
+                ? "GPU clock cap active — click to use stock clocks until reboot"
+                : "Apply the GPU clock cap for thermal headroom"
+            }
+            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[11px] transition-colors disabled:opacity-50 ${
+              capStatus.active
+                ? "border-success/40 bg-surface-elevated text-success hover:bg-success/15"
+                : "border-border bg-surface-elevated text-muted hover:bg-surface-hover hover:text-text"
+            }`}
+          >
+            <BoltIcon className="h-3 w-3" />
+            {capLoading ? "Clock cap…" : capStatus.active ? "Clock cap on" : "Clock cap off"}
           </button>
         )}
         {online ? (

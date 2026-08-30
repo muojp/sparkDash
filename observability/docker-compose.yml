@@ -8,9 +8,8 @@
 # Prometheus  http://localhost:9090
 # InfluxDB    http://localhost:8086   (admin / sparkdash123, org=sparkdash, bucket=sparkdash, token below)
 #
-# The sparkDash scrape / push target defaults to host.docker.internal:5555 —
-# i.e. sparkDash running on the Docker host. Override SPARKDASH_TARGET for a
-# remote Spark (e.g. 192.168.0.100:5555).
+# The Prometheus target defaults to host.docker.internal:5555 — sparkDash on
+# this Docker host. Edit prometheus/prometheus.yml for a remote deployment.
 name: sparkdash-observability
 
 services:
@@ -22,7 +21,9 @@ services:
       - --storage.tsdb.retention.time=180d
       - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prom-data:/prometheus
@@ -32,7 +33,7 @@ services:
     image: influxdb:2.7
     container_name: sparkdash-influxdb
     ports:
-      - "8086:8086"
+      - "127.0.0.1:8086:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: admin
@@ -49,7 +50,7 @@ services:
     image: grafana/grafana:11.6.0
     container_name: sparkdash-grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: sparkdash

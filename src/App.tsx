@@ -9,6 +9,7 @@ import { SparkPage } from "./components/SparkPage/SparkPage";
 import { HermesUpdateDialog } from "./components/SparkPage/HermesUpdateDialog";
 import { OverviewPage } from "./components/OverviewPage/OverviewPage";
 import { ShowcasePage } from "./components/ShowcasePage/ShowcasePage";
+import { TokenTracePage } from "./components/TokenTracePage/TokenTracePage";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { GearIcon, BoltIcon } from "./components/ui/icons";
@@ -254,6 +255,9 @@ function DashboardApp() {
             onReorder={handleReorder}
           />
           <div className="ml-auto flex items-center gap-2.5">
+            <a href="/tokentrace" className="tt-nav-link" title="TokenTrace Live">
+              <span className="tt-nav-pulse" /> TokenTrace
+            </a>
             <button
               type="button"
               onClick={() => setShowSettings(true)}
@@ -333,6 +337,7 @@ function App() {
   if (route.mode === "showcase" && route.showcaseSparkId) {
     return <ShowcasePage sparkId={route.showcaseSparkId} />;
   }
+  if (route.mode === "tokentrace") return <TokenTracePage />;
   return <DashboardApp />;
 }
 

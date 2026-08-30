@@ -13,7 +13,9 @@ config/gpu-memory.json.*
 config/bench-exports/
 *.log
 .DS_Store
-docs/
+docs/*
+!docs/OBSERVABILITY.md
+!docs/TOKENTRACE.md
 mockups/
 AGENTS.md
 CODEBASE.md

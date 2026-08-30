@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { OVERVIEW_ID } from "../constants";
 
-export type RouteMode = "app" | "showcase";
+export type RouteMode = "app" | "showcase" | "tokentrace";
 
 export interface AppRoute {
   mode: RouteMode;
@@ -10,6 +10,9 @@ export interface AppRoute {
 }
 
 function parsePath(pathname: string): AppRoute {
+  if (/^\/tokentrace\/?$/.test(pathname)) {
+    return { mode: "tokentrace", showcaseSparkId: null };
+  }
   const showcase = pathname.match(/^\/showcase\/([^/]+)/);
   if (showcase) {
     return {

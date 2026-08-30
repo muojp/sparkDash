@@ -73,6 +73,7 @@ Full history: [CHANGELOG.md](./CHANGELOG.md)
 | **Tailnet** | Opt-in probe: flags a unit that is healthy on the LAN but off its tailnet |
 | **Decode benchmark** | Multi-concurrency streaming decode tok/s; type picker (Structured / Prose / Code / JSON); lab protocol (temp 0, thinking off); persisted last run |
 | **Prompt Showcase** | Full-page multi-terminal LLM streaming demo (up to 32 prompts) with live tok/s and copy-out |
+| **TokenTrace Live (add-on)** | Real-time metadata-sized routed-expert map (43 × 256 in the current DeepSeek V4 stream), step timing, accepted/rejected work, two-node GPU/RoCE rows and `HH:MM:SS.ss` token timecodes. Follows the same-host DeepSeek recorder files read-only; no SSH, Grafana or Prometheus required — see [docs/TOKENTRACE.md](./docs/TOKENTRACE.md) |
 | **vLLM health** | KV cache %, run/wait queue, TTFT/E2E/ITL p95, preemptions, prefix cache, MTP accept from Prometheus `/metrics` |
 | **Multiple LLM ports** | Monitor several LLM servers on different ports simultaneously — each gets its own panel with independent backend detection and metrics |
 | **GPU processes** | See the top GPU processes by VRAM usage directly in the GPU panel, including process name and memory allocation |
@@ -84,7 +85,7 @@ Full history: [CHANGELOG.md](./CHANGELOG.md)
 | **Secrets** | SSH passwords AES-256-GCM encrypted; never in `sparks.json` or API responses |
 | **Docker-first** | Single privileged container for host metrics; prod and dev Compose files |
 | **Hot config** | Add / edit / remove / reorder Sparks from the UI with no process restart |
-| **Grafana export** | Prometheus `GET /metrics` (pull, on by default) and InfluxDB line-protocol push; every value on the dashboard, `sparkdash_` prefixed, plus a local Prometheus + InfluxDB + Grafana mini-stack — see [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) |
+| **Grafana export (optional)** | Opt-in Prometheus `GET /metrics` and InfluxDB line-protocol push; neither is required for the dashboard or TokenTrace Live. A local Prometheus + InfluxDB + Grafana mini-stack is available separately — see [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) |
 
 ---
 
@@ -358,8 +359,9 @@ sparkDash/
 | DELETE | `/api/sparks/:id/llm-ports/:port` | Remove an LLM port (hot) |
 | PUT | `/api/sparks/:id/llm-port` | LLM port — backward-compat (hot) |
 | GET | `/api/sparks/:id/llm/daily` | Daily busy decode/prefill tok/s (`port`, `days`) |
-| GET | `/metrics` | Prometheus text exposition of every unit's metrics ([docs](./docs/OBSERVABILITY.md)) |
+| GET | `/metrics` | Optional Prometheus text exposition when `PROMETHEUS_METRICS=true` ([docs](./docs/OBSERVABILITY.md)) |
 | GET | `/api/exporters` | Exporter status (Prometheus path, last InfluxDB push result) |
+| GET | `/api/tokentrace` | TokenTrace availability, Head/Worker mapping and live source status |
 | GET | `/api/settings` | Global settings |
 | PUT | `/api/settings` | Update global settings |
 | WS | `/ws` | Real-time metrics stream |
@@ -408,8 +410,14 @@ Copy `.env.example` to `.env` if needed:
 | `HOST_SYS_PATH` | `/host/sys` | Host sys mount |
 | `HOST_ROOT_PATH` | `/host/root` | Host root mount |
 | `SSH_IDENTITY_FILE` | _(unset)_ | Path **inside the process** to a private key (`ssh -i`). Use when the bind-mount is not a default OpenSSH name. |
-| `PROMETHEUS_METRICS` | `true` | Serve `GET /metrics` for Prometheus (`PROMETHEUS_METRICS_PATH`, `METRICS_PREFIX` to customise) |
+| `PROMETHEUS_METRICS` | `false` | Opt in to `GET /metrics` for Prometheus (`PROMETHEUS_METRICS_PATH`, `METRICS_PREFIX` to customise) |
 | `INFLUX_URL` | _(unset)_ | Push line protocol to InfluxDB (`INFLUX_ORG`, `INFLUX_BUCKET`, `INFLUX_TOKEN`, `INFLUX_INTERVAL_MS`) — see [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) |
+| `TOKENTRACE_HEAD_ID` | _(auto)_ | Head id when the registry contains more than one Head/Worker cluster |
+| `TOKENTRACE_DIR` | _(auto)_ | Recorder directory override. Docker assumes `/home/<Head SSH user>/.cache/huggingface/tokentrace` through `HOST_ROOT_PATH` (`/root/...` for root); bare metal uses the sparkDash user's home |
+| `TOKENTRACE_TOKEN_OUTPUT` | `metadata` | `detokenize` displays generated token text via the local model server; metadata mode keeps token text out of sparkDash |
+| `TOKENTRACE_DETOKENIZE_URL` | `http://127.0.0.1:8888/detokenize` | OpenAI-compatible endpoint used only in `detokenize` mode |
+| `TOKENTRACE_MODEL` | _(unset)_ | Served model name required by `detokenize` mode |
+| `TOKENTRACE_DEMO` | `false` | Deterministic TokenTrace stream for local UI testing |
 | `SPARKDASH_DEMO` | `false` | Synthetic metrics for every unit — for trying the UI / exporters without hardware |
 
 > The listener defaults to `127.0.0.1` (loopback) so the dashboard — which can SSH into and
@@ -417,6 +425,8 @@ Copy `.env.example` to `.env` if needed:
 > LAN IP (or `0.0.0.0`) to reach it from another machine. The provided `docker-compose.yml`
 > (`network_mode: host`) sets `BIND_HOST=0.0.0.0` explicitly (prod and `docker-compose.dev.yml`); restrict access at the network
 > layer, or set `127.0.0.1` when running behind a reverse proxy.
+> Compose reads `.env` for interpolation; the provided production and development files
+> explicitly forward the documented runtime settings into the container.
 
 ### Adding a unit
 

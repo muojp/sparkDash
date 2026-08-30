@@ -2,10 +2,14 @@
  * sshExec — centralized SSH command execution.
  * Supports both key-based and password-based (sshpass) authentication.
  *
- * Uses execFile + argv arrays (no shell interpolation of user/host/cmd).
+ * Keeps one non-interactive shell open per target and serializes commands over
+ * its stdin/stdout.  This is important on monitored hosts: opening a fresh SSH
+ * connection for every metric domain creates several PAM/systemd-logind/D-Bus
+ * sessions per second and can make long-lived system daemons grow without bound.
  * Password auth uses sshpass -e (password via env), not -p on the command line.
  */
-import { execFile } from "child_process";
+import { spawn } from "child_process";
+import { createHash, randomBytes } from "crypto";
 import fs from "fs";
 import { COMFY_PORT, COMFY_PROBE_TIMEOUT_MS, SSH_CONNECT_TIMEOUT } from "../config.js";
 import { isAllowedTargetHost, isValidSshUser } from "../validate.js";
@@ -14,6 +18,8 @@ import { llmProbeHost } from "./llmHost.js";
 // Detect sshpass without shelling out to `which` on every cold call —
 // checking PATH entries directly is faster and avoids spawning a shell.
 let _sshpassAvailable = null;
+const _connections = new Map();
+const MAX_COMMAND_OUTPUT = 10 * 1024 * 1024;
 function sshpassAvailable() {
   if (_sshpassAvailable !== null) return _sshpassAvailable;
   try {
@@ -55,6 +61,149 @@ function sshpassAvailable() {
 }
 
 /**
+ * A single authenticated SSH connection with one remote bash process. Commands
+ * run in isolated subshells, preserving the old sshExec semantics while
+ * avoiding a new PAM/login session for every collector poll.
+ */
+export class PersistentSshConnection {
+  constructor({ file, args, env, targetHost, spawnImpl = spawn }) {
+    this.file = file;
+    this.args = args;
+    this.env = env;
+    this.targetHost = targetHost;
+    this.spawnImpl = spawnImpl;
+    this.child = null;
+    this.queue = [];
+    this.active = null;
+    this.stdoutBuffer = "";
+    this.stderrBuffer = "";
+  }
+
+  run(cmd, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ cmd, timeoutMs, resolve, reject });
+      this._pump();
+    });
+  }
+
+  _spawn() {
+    const child = this.spawnImpl(this.file, this.args, {
+      env: this.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.child = child;
+    this.stdoutBuffer = "";
+    this.stderrBuffer = "";
+
+    child.stdout.setEncoding?.("utf8");
+    child.stderr.setEncoding?.("utf8");
+    child.stdout.on("data", (chunk) => this._onStdout(String(chunk)));
+    child.stderr.on("data", (chunk) => {
+      this.stderrBuffer += String(chunk);
+      if (this.stderrBuffer.length > MAX_COMMAND_OUTPUT) {
+        this.stderrBuffer = this.stderrBuffer.slice(-MAX_COMMAND_OUTPUT);
+      }
+    });
+    child.on("error", (err) => this._failAll(err));
+    child.on("close", (code, signal) => {
+      if (this.child !== child) return;
+      const detail = this.stderrBuffer.trim() || `connection closed (${signal || code})`;
+      this._failAll(new Error(detail));
+    });
+  }
+
+  _pump() {
+    if (this.active || this.queue.length === 0) return;
+    if (!this.child || this.child.exitCode != null || this.child.killed) this._spawn();
+
+    const job = this.queue.shift();
+    const token = randomBytes(12).toString("hex");
+    const begin = `__SPARKDASH_BEGIN_${token}__`;
+    const end = `__SPARKDASH_END_${token}__`;
+    this.stdoutBuffer = "";
+    this.stderrBuffer = "";
+    this.active = { ...job, begin, end, began: false, timer: null };
+    this.active.timer = setTimeout(() => {
+      this._failAll(new Error(`command timed out after ${job.timeoutMs}ms`));
+    }, job.timeoutMs);
+
+    // The subshell prevents `cd`, variable assignments, or `exit` in one
+    // collector command from leaking into (or terminating) the shared shell.
+    const script = [
+      `printf '%s\\n' '${begin}'`,
+      "(",
+      job.cmd,
+      ")",
+      "__sparkdash_rc=$?",
+      `printf '\\n%s:%s\\n' '${end}' "$__sparkdash_rc"`,
+      "",
+    ].join("\n");
+
+    const child = this.child;
+    child.stdin.write(script, (err) => {
+      if (err && this.child === child) this._failAll(err);
+    });
+  }
+
+  _onStdout(chunk) {
+    const active = this.active;
+    if (!active) return;
+    this.stdoutBuffer += chunk;
+    if (this.stdoutBuffer.length > MAX_COMMAND_OUTPUT) {
+      this._failAll(new Error(`command output exceeded ${MAX_COMMAND_OUTPUT} bytes`));
+      return;
+    }
+
+    if (!active.began) {
+      const beginAt = this.stdoutBuffer.indexOf(`${active.begin}\n`);
+      if (beginAt < 0) return;
+      this.stdoutBuffer = this.stdoutBuffer.slice(beginAt + active.begin.length + 1);
+      active.began = true;
+    }
+
+    const marker = `\n${active.end}:`;
+    const endAt = this.stdoutBuffer.indexOf(marker);
+    if (endAt < 0) return;
+    const statusStart = endAt + marker.length;
+    const statusEnd = this.stdoutBuffer.indexOf("\n", statusStart);
+    if (statusEnd < 0) return;
+
+    const output = this.stdoutBuffer.slice(0, endAt).trim();
+    const status = Number.parseInt(this.stdoutBuffer.slice(statusStart, statusEnd), 10);
+    clearTimeout(active.timer);
+    this.active = null;
+    this.stdoutBuffer = this.stdoutBuffer.slice(statusEnd + 1);
+    const stderr = this.stderrBuffer.trim();
+    this.stderrBuffer = "";
+
+    if (status === 0) active.resolve(output);
+    else active.reject(new Error(`SSH to ${this.targetHost} failed: ${stderr || `remote command exited ${status}`}`));
+    queueMicrotask(() => this._pump());
+  }
+
+  _failAll(reason) {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    const wrapped = new Error(`SSH to ${this.targetHost} failed: ${this.stderrBuffer.trim() || error.message}`);
+    const child = this.child;
+    this.child = null;
+    if (child && !child.killed) child.kill("SIGKILL");
+    if (this.active) {
+      clearTimeout(this.active.timer);
+      this.active.reject(wrapped);
+      this.active = null;
+    }
+    for (const job of this.queue.splice(0)) job.reject(wrapped);
+    this.stdoutBuffer = "";
+    this.stderrBuffer = "";
+  }
+}
+
+function connectionKey({ targetHost, user, auth, password, identityFile }) {
+  const secretFingerprint = createHash("sha256").update(password || "").digest("hex").slice(0, 16);
+  return [targetHost, user, auth || "key", identityFile || "", secretFingerprint].join("\0");
+}
+
+/**
  * Execute a command on a remote Spark via SSH.
  *
  * @param {Object} spark - Spark config object
@@ -83,13 +232,19 @@ export async function sshExec(spark, cmd, options = {}) {
     throw new Error("SSH command must be a non-empty string");
   }
 
-  // Base SSH options (no shell metacharacters in argv)
+  // Base SSH options (no shell metacharacters in argv). One remote bash stays
+  // alive and carries every command, so keepalives detect a dead path quickly.
   // accept-new: trust first-seen host key (LAN ops); pin known_hosts for stricter envs
   const baseOpts = [
     "-o",
     `ConnectTimeout=${SSH_CONNECT_TIMEOUT}`,
     "-o",
     "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=2",
+    "-T",
   ];
 
   const remote = `${user}@${targetHost}`;
@@ -123,7 +278,7 @@ export async function sshExec(spark, cmd, options = {}) {
     // Password via env (sshpass -e) — never on argv or in process list as -p
     env.SSHPASS = password;
     file = "sshpass";
-    args = ["-e", "ssh", ...baseOpts, "--", remote, cmd];
+    args = ["-e", "ssh", ...baseOpts, "--", remote, "bash --noprofile --norc"];
   } else {
     // Key-based SSH (default) — BatchMode prevents hanging on missing keys
     file = "ssh";
@@ -132,19 +287,16 @@ export async function sshExec(spark, cmd, options = {}) {
     if (identityFile) {
       args.push("-i", identityFile);
     }
-    args.push("--", remote, cmd);
+    args.push("--", remote, "bash --noprofile --norc");
   }
 
-  return new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: timeoutMs, env, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) {
-        const msg = stderr?.trim() || err.message;
-        reject(new Error(`SSH to ${targetHost} failed: ${msg}`));
-      } else {
-        resolve(String(stdout).trim());
-      }
-    });
-  });
+  const key = connectionKey({ targetHost, user, auth, password, identityFile: process.env.SSH_IDENTITY_FILE });
+  let connection = _connections.get(key);
+  if (!connection) {
+    connection = new PersistentSshConnection({ file, args, env, targetHost });
+    _connections.set(key, connection);
+  }
+  return connection.run(cmd, timeoutMs);
 }
 
 /**

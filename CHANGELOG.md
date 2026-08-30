@@ -6,7 +6,8 @@ The README [Latest version changelog](./README.md#latest-version-changelog) alwa
 Format: version sections are listed newest first.
 
 ### Unreleased — Grafana export (Prometheus / InfluxDB)
-- **Prometheus exporter** — `GET /metrics` (on by default) exposes every unit's GPU / CPU / unified memory / storage / network / LLM / ComfyUI / Tailnet / Hermes values in text exposition format, `sparkdash_` prefixed; `llm_output_tokens_total` and `llm_preemptions_total` are true counters
+- **TokenTrace Live add-on** — demand-driven, read-only tail of the same-host DeepSeek recorder index/data files, sparkDash role-based Head/Worker mapping, live expert matrix and machine rows, and wall-clock `HH:MM:SS.ss` token timecodes at `/tokentrace`; no SSH or time-series stack required
+- **Prometheus exporter (optional)** — opt-in `GET /metrics` exposes every unit's GPU / CPU / unified memory / storage / network / LLM / ComfyUI / Tailnet / Hermes values in text exposition format, `sparkdash_` prefixed; stock DGX Spark needs no Prometheus/Grafana for the normal or TokenTrace UI
 - **InfluxDB exporter** — opt-in line-protocol push to the v2 write API (`INFLUX_URL`, `INFLUX_BUCKET`, `INFLUX_TOKEN`, …) on its own timer, independent of the WebSocket diff cache; status at `GET /api/exporters`
 - **Demo mode** — `SPARKDASH_DEMO=1` swaps in synthetic collectors so the UI and exporters run without SSH / nvidia-smi
 - **RDMA / RoCE counters** — `/sys/class/infiniband` port counters (local sysfs, remote over the existing network SSH probe) exported as `rdma_*` with `hca`/`port` labels plus a Grafana panel. NCCL's RDMA traffic bypasses `/proc/net/dev`, so this is the only view of ConnectX-7 fabric throughput

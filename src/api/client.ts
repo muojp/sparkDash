@@ -1,4 +1,5 @@
 import type {
+  ClockCapStatus,
   DecodeBenchJob,
   DecodeBenchListResponse,
   HermesBatchUpdateResponse,
@@ -365,6 +366,19 @@ export function shutdownAllSparks(): Promise<BatchPowerResult> {
 /** Send WoL to all registered Sparks that have a MAC configured. */
 export function wakeAllSparks(): Promise<BatchPowerResult> {
   return apiFetch("/api/sparks/wake-all", { method: "POST" });
+}
+
+// ─── GPU clock cap (gb10-clock-cap) ──────────────────────
+export function fetchClockCap(id: string): Promise<ClockCapStatus> {
+  return apiFetch(`/api/sparks/${encodeURIComponent(id)}/clock-cap`);
+}
+
+/** Apply/remove the cap for this boot; boot enablement remains unchanged. */
+export function setClockCap(id: string, enabled: boolean): Promise<ClockCapStatus> {
+  return apiFetch(`/api/sparks/${encodeURIComponent(id)}/clock-cap`, {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
 }
 
 // ─── Hermes update preview ───────────────────────────────

@@ -22,6 +22,8 @@ import { llmProbeHost } from "./collectors/llmHost.js";
 import { llmDaily } from "./collectors/LlmDaily.js";
 import { compareSemver, getLatestRelease } from "./collectors/HermesReleases.js";
 import { installExporters } from "./exporters/index.js";
+import { TokenTraceManager } from "./tokentrace/TokenTraceManager.js";
+import { readClockCapStatus, setClockCapActive } from "./collectors/ClockCapProbe.js";
 
 dotenv.config();
 
@@ -130,6 +132,14 @@ function orderedSnapshots() {
     .filter(Boolean)
     .map((m) => m.snapshot());
 }
+
+// TokenTrace is demand-driven: while a browser is subscribed it follows the
+// same-host recorder files through the existing read-only host-root mount.
+const tokenTrace = new TokenTraceManager({
+  getSparks: () => registry.sparks,
+  getSnapshots: orderedSnapshots,
+});
+registry.onChange(() => tokenTrace.refreshMapping());
 
 // ─── Express app ─────────────────────────────────────────
 const app = express();
@@ -286,6 +296,10 @@ app.put("/api/sparks/order", (req, res) => {
 // ─── Global settings ──────────────────────────────────────
 app.get("/api/settings", (_req, res) => {
   res.json(getSettings());
+});
+
+app.get("/api/tokentrace", (_req, res) => {
+  res.json(tokenTrace.status());
 });
 
 app.put("/api/settings", (req, res) => {
@@ -1272,6 +1286,35 @@ app.post("/api/sparks/:id/wake", async (req, res) => {
   }
 });
 
+// ─── GPU clock cap (gb10-clock-cap) ──────────────────────
+// Runtime-only toggle: start/stop preserves boot enablement. Do not replace it
+// with enable/disable --now: daemon-reload on these hosts can revoke NVML access
+// from running GPU containers. The remote sudoers rule allows the exact two
+// commands emitted by setClockCapActive().
+app.get("/api/sparks/:id/clock-cap", async (req, res) => {
+  const spark = registry.getSpark(req.params.id);
+  if (!spark) return res.status(404).json({ error: "Spark not found" });
+  try {
+    res.json(await readClockCapStatus(spark));
+  } catch (err) {
+    res.status(502).json({ error: err.message || String(err) });
+  }
+});
+
+app.post("/api/sparks/:id/clock-cap", async (req, res) => {
+  const spark = registry.getSpark(req.params.id);
+  if (!spark) return res.status(404).json({ error: "Spark not found" });
+  const active = req.body?.enabled;
+  if (typeof active !== "boolean") {
+    return res.status(400).json({ error: "body.enabled must be a boolean" });
+  }
+  try {
+    res.json(await setClockCapActive(spark, active));
+  } catch (err) {
+    res.status(502).json({ error: err.message || String(err) });
+  }
+});
+
 // ─── Metrics exporters (Prometheus GET /metrics, InfluxDB push) ──
 // Must be registered before the static / SPA catch-all below (Express
 // matches in registration order). Env-configured; see config.js EXPORTERS.
@@ -1301,7 +1344,17 @@ wss.on("connection", (ws) => {
   // new client benefits from the same payload format (and bufferedAmount
   // guard, although a freshly-open socket trivially passes it).
   broadcastPayload(buildSnapshotPayload());
+  ws.on("message", (raw) => {
+    try {
+      const msg = JSON.parse(String(raw));
+      if (msg?.type === "tokentrace_subscribe") tokenTrace.subscribe(ws);
+      if (msg?.type === "tokentrace_unsubscribe") tokenTrace.unsubscribe(ws);
+    } catch {
+      // Unknown client messages are ignored; snapshots are server-push only.
+    }
+  });
   ws.on("close", () => {
+    tokenTrace.unsubscribe(ws);
     console.log("[ws] client disconnected");
   });
 });
@@ -1421,6 +1474,7 @@ function shutdown(signal) {
       broadcastTimer = null;
     }
     exporters.stop();
+    tokenTrace.close();
     for (const m of monitors.values()) m.stop();
     monitors.clear();
   } catch (err) {
