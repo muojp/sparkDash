@@ -199,7 +199,7 @@ export class SystemCollector {
   // ─── GPU helpers ─────────────────────────────────────────
   async _getGPUAll() {
     const gpuOut = await this._nvidiaSmi(
-      "--query-gpu=temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap,utilization.memory --format=csv,noheader,nounits"
+      "--query-gpu=temperature.gpu,utilization.gpu,power.draw.instant,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap,utilization.memory --format=csv,noheader,nounits"
     );
     const gpu = this._parseGpuLine(gpuOut);
     const vram = await this._queryNvidiaVram();
@@ -1110,7 +1110,7 @@ export class SystemCollector {
   async _getRemoteGpu() {
     try {
       const cmd = [
-        "nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,power.draw,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap,utilization.memory --format=csv,noheader,nounits 2>/dev/null",
+        "nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,power.draw.instant,power.limit,clocks.current.sm,clocks.max.sm,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_slowdown,clocks_throttle_reasons.sw_power_cap,utilization.memory --format=csv,noheader,nounits 2>/dev/null",
         "echo '---'",
         "nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null",
         "echo '---'",

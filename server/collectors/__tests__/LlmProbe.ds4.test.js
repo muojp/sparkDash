@@ -96,6 +96,7 @@ test("_applyDs4Metrics: gauges + counters + prefix hit rate", () => {
   const probe = new LlmProbe({ lanIp: "127.0.0.1" }, 8888);
   // First sample seeds counters (no rate yet — needs a prior baseline)
   probe._applyDs4Metrics(DS4_METRICS, 2);
+  assert.equal(probe.totalPrefillTokens, 100);
   assert.equal(probe.totalOutputTokens, 50);
   assert.equal(probe.slotsActive, 2);
   assert.equal(probe.slotsTotal, 12);

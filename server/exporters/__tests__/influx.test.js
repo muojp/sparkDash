@@ -17,7 +17,7 @@ test("one line per (measurement, tag set); all fields written as floats (no i su
     metrics: {
       gpu: { temperature: 55.5, usage: 42, power: { draw: 60, limit: 100 }, vram: { used: 1, total: 2, percentage: 50, available: 1 }, processes: [] },
       storage: [{ device: "nvme0n1p1", label: "/", used: 1, total: 2, available: 1, percentage: 50, readSpeed: 0, writeSpeed: 0 }],
-      llm: [{ available: true, backend: "vllm", modelId: "org/model v2", slotsActive: 0, slotsTotal: 8, generationTps: 1.5, prefillTps: 0, totalOutputTokens: 77 }],
+      llm: [{ available: true, backend: "vllm", modelId: "org/model v2", slotsActive: 0, slotsTotal: 8, generationTps: 1.5, prefillTps: 0, totalPrefillTokens: 99, totalOutputTokens: 77 }],
     },
   };
   const text = renderLineProtocol(flattenSnapshot(snap), { timestampMs: 1700000000000 });
@@ -38,6 +38,8 @@ test("one line per (measurement, tag set); all fields written as floats (no i su
   assert.ok(llm.includes("model=org/model\\ v2"));
   assert.ok(llm.includes("port=8888"));
   assert.ok(llm.includes("output_tokens_total=77.0"));
+  assert.ok(llm.includes("decode_tokens_total=77.0"));
+  assert.ok(llm.includes("prefill_tokens_total=99.0"));
   assert.ok(llm.includes("generation_tokens_per_second=1.5"));
   // exactly one gpu line, one llm line
   assert.equal(lines.filter((l) => l.startsWith("sparkdash_gpu,")).length, 1);

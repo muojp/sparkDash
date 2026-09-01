@@ -270,6 +270,7 @@ export class DemoLlmProbe {
       kv: new Walker(rand, { min: 0.05, max: 0.95, start: 0.4, step: 0.05 }),
       ttft: new Walker(rand, { min: 0.05, max: 2.5, start: 0.4, step: 0.1 }),
     };
+    this.totalPrefillTokens = 0;
     this.totalOutputTokens = 0;
     this.preemptions = 0;
     this._lastAt = Date.now();
@@ -280,7 +281,9 @@ export class DemoLlmProbe {
     const dt = (now - this._lastAt) / 1000;
     this._lastAt = now;
     const gen = this.w.gen.next();
+    const prefill = this.w.prefill.next();
     this.totalOutputTokens += Math.round(gen * dt);
+    this.totalPrefillTokens += Math.round(prefill * dt);
     if (this._rand() < 0.02) this.preemptions += 1;
     const running = Math.round(gen / 30);
     return {
@@ -293,9 +296,10 @@ export class DemoLlmProbe {
       slotsActive: running,
       slotsTotal: 8,
       generationTps: r1(gen),
-      prefillTps: r1(this.w.prefill.next()),
+      prefillTps: r1(prefill),
       cachedPrefillTps: null,
       uncachedPrefillTps: null,
+      totalPrefillTokens: this.totalPrefillTokens,
       totalOutputTokens: this.totalOutputTokens,
       kvCacheUsage: Math.round(this.w.kv.next() * 1000) / 1000,
       requestsRunning: running,

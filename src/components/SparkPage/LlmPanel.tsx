@@ -570,7 +570,7 @@ export function LlmPanel({
             <div className="space-y-0.5">
               <div className="text-[10px] uppercase tracking-wide text-muted">Total Generated</div>
               <div className="font-tabular text-sm text-text">
-                {llm && llm.totalOutputTokens > 0
+                {llm?.totalOutputTokens != null && llm.totalOutputTokens > 0
                   ? llm.totalOutputTokens.toLocaleString()
                   : "—"}
               </div>

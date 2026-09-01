@@ -112,7 +112,7 @@ Labels / tags on every series: `spark` (id), `name`, `kind` (`spark`|`host`).
 | storage | `storage_{used,total,available}_bytes`, `storage_usage_percent`, `storage_{read,write}_bytes_per_second`, `storage_{read,write}_bytes_total` (counter, local units) | `device`, `label` |
 | rdma | `rdma_{receive,transmit}_bytes_total` (counter, IB `port_*_data` × 4), `rdma_{receive,transmit}_packets_total` (counter), `rdma_{receive,transmit}_bytes_per_second`, `rdma_link_speed_mbps`, `rdma_port_active` — from `/sys/class/infiniband/<hca>/ports/<n>`. NCCL over RoCE is RDMA and **bypasses the kernel network stack**, so TP traffic may not appear in `/proc/net/dev` / `network_*`; use this family for the fabric path. Empty on hosts without an IB subsystem | `hca`, `port` |
 | network | `network_primary_interface_info`, `network_link_speed_mbps`, `network_{receive,transmit}_bytes_per_second`, `network_{receive,transmit}_bytes_total` (counter), `network_interface_up` | `interface` |
-| llm (per port) | `llm_available`, `llm_slots_active`, `llm_slots_max`, `llm_generation_tokens_per_second`, `llm_prefill_tokens_per_second`, `llm_{cached,uncached}_prefill_tokens_per_second`, `llm_output_tokens_total` (counter), `llm_context_length`, `llm_gpu_memory_utilization_ratio`, `llm_kv_cache_usage_ratio`, `llm_requests_{running,waiting}`, `llm_{ttft,e2e,itl}_p95_seconds`, `llm_preemptions_total` (counter), `llm_prefix_cache_hit_ratio`, `llm_mtp_acceptance_ratio`, `llm_posture_level` (+ `auth`, `scope`) | `port`, `backend`, `model` |
+| llm (per port) | `llm_available`, `llm_slots_active`, `llm_slots_max`, `llm_generation_tokens_per_second`, `llm_prefill_tokens_per_second`, `llm_{cached,uncached}_prefill_tokens_per_second`, `llm_{decode,prefill,output}_tokens_total` (counters), `llm_context_length`, `llm_gpu_memory_utilization_ratio`, `llm_kv_cache_usage_ratio`, `llm_requests_{running,waiting}`, `llm_{ttft,e2e,itl}_p95_seconds`, `llm_preemptions_total` (counter), `llm_prefix_cache_hit_ratio`, `llm_mtp_acceptance_ratio`, `llm_posture_level` (+ `auth`, `scope`) | `port`, `backend`, `model` |
 | comfy | `comfy_available`, `comfy_queue_{running,pending}`, `comfy_progress_percent`, `comfy_queue_eta_seconds` | `port` |
 | tailscale | `tailscale_available`, `tailscale_online`, `tailscale_key_expired` | |
 | hermes | `hermes_installed`, `hermes_update_available`, `hermes_behind_commits` | |
@@ -121,8 +121,20 @@ Conventions: MB values from the collectors are converted to bytes (×1024²);
 devices in `disabledDevices` / interfaces in `disabledInterfaces` are not
 exported (same filter as the UI main view); optional backend fields (vLLM-only
 p95s etc.) are omitted rather than exported as 0; non-finite values are dropped.
-`llm_output_tokens_total` is the server's cumulative counter, so
-`rate(sparkdash_llm_output_tokens_total[1m])` gives tok/s independent of the
+The `llm_{decode,prefill,output}_tokens_total` series are built only from
+backend-owned cumulative counters; sparkDash never integrates the live tok/s
+gauges to synthesize one. sparkDash persists each raw counter and accumulated
+total in `config/llm-lifetime.json`, then adds only its increment. When a
+backend restart makes a counter decrease, the new value is treated as the
+increment since reset, so the exported counter remains monotonic across both
+inference-backend and sparkDash restarts. (A reset and complete catch-up
+past the old value between two polls cannot be detected.)
+For example, llama.cpp's per-request `/slots` values reset when slots are
+reused, so no lifetime token series is emitted for that path. Decode and output
+intentionally share the generation-token source, but both names are exported
+so Grafana queries can match the corresponding live panels.
+`llm_output_tokens_total` can therefore be used as before:
+`rate(sparkdash_llm_output_tokens_total[5m])` gives a low-noise tok/s average independent of the
 probe's own rate estimate.
 
 **Rates vs counters — which to graph.** The `*_bytes_per_second` gauges are

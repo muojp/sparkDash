@@ -47,8 +47,8 @@ const snap = {
       ],
     },
     llm: [
-      { available: true, backend: "vllm", modelId: "org/model", slotsActive: 1, slotsTotal: 8, generationTps: 33.3, prefillTps: 500, totalOutputTokens: 9999, kvCacheUsage: 0.4, requestsRunning: 1, requestsWaiting: null, preemptionsTotal: 2, posture: { level: "warn", auth: "open", scope: "lan", label: "Open · LAN", detail: "" } },
-      { available: false, backend: null, modelId: null, slotsActive: 0, slotsTotal: 0, generationTps: 0, prefillTps: 0, totalOutputTokens: 0, error: "ECONNREFUSED" },
+      { available: true, backend: "vllm", modelId: "org/model", slotsActive: 1, slotsTotal: 8, generationTps: 33.3, prefillTps: 500, totalPrefillTokens: 12345, totalCachedPrefillTokens: 10000, totalUncachedPrefillTokens: 2345, totalOutputTokens: 9999, kvCacheUsage: 0.4, requestsRunning: 1, requestsWaiting: null, preemptionsTotal: 2, posture: { level: "warn", auth: "open", scope: "lan", label: "Open · LAN", detail: "" } },
+      { available: false, backend: null, modelId: null, slotsActive: 0, slotsTotal: 0, generationTps: 0, prefillTps: 0, totalPrefillTokens: 0, totalOutputTokens: 0, error: "ECONNREFUSED" },
     ],
     comfy: { available: true, port: 8188, queueRunning: 1, queuePending: 3, progress: { percent: 42 }, queueEtaMs: 90000 },
     tailscale: { available: true, online: false, keyExpired: false },
@@ -116,6 +116,11 @@ test("llm entries are labelled by port from snap.llmPorts and optional fields ar
   assert.equal(a.labels.backend, "vllm");
   assert.equal(a.labels.model, "org/model");
   assert.equal(find(out, "llm_output_tokens_total", { port: "8888" }).type, "counter");
+  assert.equal(find(out, "llm_decode_tokens_total", { port: "8888" }).value, 9999);
+  assert.equal(find(out, "llm_prefill_tokens_total", { port: "8888" }).value, 12345);
+  assert.equal(find(out, "llm_prefill_tokens_total", { port: "8888" }).type, "counter");
+  assert.equal(find(out, "llm_cached_prefill_tokens_total", { port: "8888" }).value, 10000);
+  assert.equal(find(out, "llm_uncached_prefill_tokens_total", { port: "8888" }).value, 2345);
   assert.equal(find(out, "llm_kv_cache_usage_ratio", { port: "8888" }).value, 0.4);
   assert.equal(find(out, "llm_requests_waiting", { port: "8888" }), undefined);
   assert.equal(find(out, "llm_preemptions_total", { port: "8888" }).value, 2);

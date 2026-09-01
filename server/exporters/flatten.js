@@ -99,7 +99,11 @@ export const METRICS = Object.freeze({
   llm_prefill_tokens_per_second: ["gauge", "Live prefill tok/s"],
   llm_cached_prefill_tokens_per_second: ["gauge", "Live cached prefill tok/s (backends that split kinds)"],
   llm_uncached_prefill_tokens_per_second: ["gauge", "Live uncached prefill tok/s"],
-  llm_output_tokens_total: ["counter", "Cumulative generated tokens as reported by the LLM server"],
+  llm_decode_tokens_total: ["counter", "Restart-safe cumulative decoded tokens derived from backend counters"],
+  llm_prefill_tokens_total: ["counter", "Restart-safe cumulative prefill/input tokens derived from backend counters"],
+  llm_cached_prefill_tokens_total: ["counter", "Restart-safe cumulative prefix-cache-hit input tokens"],
+  llm_uncached_prefill_tokens_total: ["counter", "Restart-safe cumulative non-cached input tokens"],
+  llm_output_tokens_total: ["counter", "Restart-safe cumulative generated tokens derived from backend counters"],
   llm_context_length: ["gauge", "Model context length"],
   llm_gpu_memory_utilization_ratio: ["gauge", "Engine GPU memory utilization 0-1 (vLLM)"],
   llm_kv_cache_usage_ratio: ["gauge", "KV cache usage 0-1 (vLLM)"],
@@ -308,6 +312,10 @@ export function flattenSnapshot(snap) {
     push("llm_prefill_tokens_per_second", llm.prefillTps, l);
     if (llm.cachedPrefillTps != null) push("llm_cached_prefill_tokens_per_second", llm.cachedPrefillTps, l);
     if (llm.uncachedPrefillTps != null) push("llm_uncached_prefill_tokens_per_second", llm.uncachedPrefillTps, l);
+    push("llm_decode_tokens_total", llm.totalOutputTokens, l);
+    push("llm_prefill_tokens_total", llm.totalPrefillTokens, l);
+    push("llm_cached_prefill_tokens_total", llm.totalCachedPrefillTokens, l);
+    push("llm_uncached_prefill_tokens_total", llm.totalUncachedPrefillTokens, l);
     push("llm_output_tokens_total", llm.totalOutputTokens, l);
     if (llm.contextLength != null) push("llm_context_length", llm.contextLength, l);
     if (llm.gpuMemoryUtilization != null) push("llm_gpu_memory_utilization_ratio", llm.gpuMemoryUtilization, l);

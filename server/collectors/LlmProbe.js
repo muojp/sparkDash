@@ -7,6 +7,7 @@
 import { LLM_PROBE_TIMEOUT_MS } from "../config.js";
 import { classifyHostScope } from "../validate.js";
 import { llmProbeHost } from "./llmHost.js";
+import { llmLifetime } from "./LlmLifetime.js";
 
 const FAIL_RESET_THRESHOLD = 3;
 const REDETECT_INTERVAL_MS = 60_000;
@@ -96,8 +97,18 @@ export class LlmProbe {
     this.lastIterSum = null;
     this.lastProbeTime = 0;
 
-    // Cumulative total output tokens (generation) as reported by the LLM server
-    this.totalOutputTokens = 0;
+    // Restart-safe cumulative totals derived from backend-owned counters.
+    this.totalPrefillTokens = null;
+    this.totalCachedPrefillTokens = null;
+    this.totalUncachedPrefillTokens = null;
+    this.totalOutputTokens = null;
+    // Raw backend counters used to build restart-safe, monotonic totals.
+    this.lifetimeRawTokenCounts = {
+      input: null,
+      output: null,
+      cachedInput: null,
+      uncachedInput: null,
+    };
 
     // vLLM inference metrics from /metrics (null when not vLLM / missing series)
     // Metric names follow stock vLLM Prometheus exposition (versions may differ).
@@ -131,6 +142,59 @@ export class LlmProbe {
     const rounded = Math.max(0, Math.round(rate * 100) / 100);
     if (rounded > 0) this.prefillTps = rounded;
     else if (!inflight) this.prefillTps = 0;
+  }
+
+  /**
+   * Add only backend-counter increments to sparkDash's monotonic lifetime
+   * totals. If a raw counter decreases, the backend restarted/reset and its
+   * new value is the increment since that reset.
+   *
+   * The first observed value seeds the lifetime total, preserving work done
+   * before sparkDash attached to an already-running backend.
+   * @param {number|null|undefined} input
+   * @param {number|null|undefined} output
+   * @param {number|null|undefined} cachedInput
+   * @param {number|null|undefined} uncachedInput
+   */
+  _updateLifetimeTokenTotals(input, output, cachedInput = null, uncachedInput = null) {
+    const persisted = llmLifetime.update(
+      String(this.spark?.id || ""),
+      this.port,
+      input,
+      output,
+      cachedInput,
+      uncachedInput
+    );
+    if (persisted) {
+      this.lifetimeRawTokenCounts.input = persisted.rawInput;
+      this.lifetimeRawTokenCounts.output = persisted.rawOutput;
+      this.totalPrefillTokens = persisted.totalInput;
+      this.totalCachedPrefillTokens = persisted.totalCachedInput ?? null;
+      this.totalUncachedPrefillTokens = persisted.totalUncachedInput ?? null;
+      this.totalOutputTokens = persisted.totalOutput;
+      return;
+    }
+    const update = (kind, value, totalKey) => {
+      if (value == null) return;
+      const current = Number(value);
+      if (!Number.isFinite(current) || current < 0) return;
+      const previous = this.lifetimeRawTokenCounts[kind];
+      const increment = previous == null || current < previous
+        ? current
+        : current - previous;
+      this[totalKey] = (this[totalKey] ?? 0) + increment;
+      this.lifetimeRawTokenCounts[kind] = current;
+    };
+    update("input", input, "totalPrefillTokens");
+    update("output", output, "totalOutputTokens");
+    const cachedCounter = Number(cachedInput);
+    const uncachedCounter = Number(uncachedInput);
+    if (cachedInput != null && Number.isFinite(cachedCounter) && cachedCounter >= 0) {
+      update("cachedInput", cachedCounter, "totalCachedPrefillTokens");
+    }
+    if (uncachedInput != null && Number.isFinite(uncachedCounter) && uncachedCounter >= 0) {
+      update("uncachedInput", uncachedCounter, "totalUncachedPrefillTokens");
+    }
   }
 
   /**
@@ -237,7 +301,8 @@ export class LlmProbe {
     this.gpuMemoryUtilization = null;
     this.slotsActive = 0;
     this.slotsTotal = 0;
-    this.totalOutputTokens = 0;
+    // Keep restart-safe lifetime totals and their last raw counter values.
+    // Detection resets are expected while an inference backend restarts.
     this.kvCacheUsage = null;
     this.requestsRunning = null;
     this.requestsWaiting = null;
@@ -560,7 +625,7 @@ export class LlmProbe {
       }
       if (prefilled != null) this.lastTokenCounts.input = prefilled;
       this.lastTokenCounts.output = decoded;
-      this.totalOutputTokens = decoded;
+      this._updateLifetimeTokenTotals(prefilled, decoded);
     } else {
       // No counters — fall back to window gauges only while something is in flight
       const gaugeGen = this._getPromMetric(txt, "ds4_decode_tok_s");
@@ -660,9 +725,11 @@ export class LlmProbe {
       this.prefillTps = 0;
     }
 
-    if (Number.isFinite(prompt)) this.lastTokenCounts.input = prompt;
+    if (Number.isFinite(prompt)) {
+      this.lastTokenCounts.input = prompt;
+    }
     this.lastTokenCounts.output = completion;
-    this.totalOutputTokens = completion;
+    this._updateLifetimeTokenTotals(prompt, completion);
   }
 
   /**
@@ -673,6 +740,17 @@ export class LlmProbe {
   _applyVllmMetrics(txt, dtSec) {
     const promptTokens = this._getVllmMetric(txt, "prompt_tokens_total");
     const genTokens = this._getVllmMetric(txt, "generation_tokens_total");
+    const prefixHits = this._getVllmMetric(txt, "prefix_cache_hits_total");
+    const cachedPromptTokens =
+      this._getPromMetricLabeled(txt, "vllm:prompt_tokens_by_source_total", "source", "local_cache_hit")
+      ?? this._getVllmMetric(txt, "prompt_tokens_cached_total")
+      ?? prefixHits;
+    const computedPromptTokens = this._getPromMetricLabeled(
+      txt,
+      "vllm:prompt_tokens_by_source_total",
+      "source",
+      "local_compute"
+    );
     const running = this._getVllmMetric(txt, "num_requests_running");
     const iterSum = this._getVllmMetric(txt, "iteration_tokens_total_sum");
     if (promptTokens != null && genTokens != null) {
@@ -680,7 +758,12 @@ export class LlmProbe {
       const deltaOut = genTokens - this.lastTokenCounts.output;
       this.lastTokenCounts.input = promptTokens;
       this.lastTokenCounts.output = genTokens;
-      this.totalOutputTokens = genTokens;
+      this._updateLifetimeTokenTotals(
+        promptTokens,
+        genTokens,
+        cachedPromptTokens,
+        computedPromptTokens
+      );
       const ttftSum = this._getVllmMetric(txt, "time_to_first_token_seconds_sum");
       const deltaIter =
         iterSum != null && this.lastIterSum != null ? iterSum - this.lastIterSum : 0;
@@ -734,7 +817,6 @@ export class LlmProbe {
     const itlP95 = this._histogramQuantile(itlHist.buckets, itlHist.total, 0.95);
     this.itlP95Seconds = itlP95 == null ? null : Math.round(itlP95 * 1000) / 1000;
 
-    const prefixHits = this._getVllmMetric(txt, "prefix_cache_hits_total");
     const prefixQueries = this._getVllmMetric(txt, "prefix_cache_queries_total");
     this.prefixCacheHitRate =
       prefixHits != null && prefixQueries != null && prefixQueries > 0
@@ -793,7 +875,7 @@ export class LlmProbe {
         const deltaOut = output - this.lastTokenCounts.output;
         this.lastTokenCounts.input = input;
         this.lastTokenCounts.output = output;
-        this.totalOutputTokens = output;
+        this._updateLifetimeTokenTotals(input, output);
         if (dtSec > 0 && dtSec < 10) {
           this.generationTps = Math.max(0, Math.round((deltaOut / dtSec) * 100) / 100);
           this._setPrefillTps(deltaIn / dtSec, deltaOut > 0);
@@ -998,8 +1080,12 @@ export class LlmProbe {
         this.prefillTps = 0;
       }
     }
+    if (prompt != null) {
+      this.lastTokenCounts.input = prompt;
+      this._updateLifetimeTokenTotals(prompt, null);
+    }
     this.lastTokenCounts.output = gen;
-    this.totalOutputTokens = gen;
+    this._updateLifetimeTokenTotals(null, gen);
 
     const running =
       this._getPromMetric(txt, "sglang:num_running_reqs") ??
@@ -1105,7 +1191,9 @@ export class LlmProbe {
             }
           }
 
-          this.totalOutputTokens = totalDecoded;
+          // /slots values are per-slot request state and reset when a slot is
+          // reused. They are useful for live rates, but are not lifetime
+          // counters, so deliberately do not expose them as *_total.
           this.generationTps = Math.max(0, Math.round(totalGen * 100) / 100);
           this._setPrefillTps(totalPrefill, totalGen > 0);
           if (sawCache) this._setPrefillSplitRates(cachedSum, promptedSum, dtSec);
@@ -1369,6 +1457,9 @@ export class LlmProbe {
       prefillTps: this.prefillTps,
       cachedPrefillTps: this.cachedPrefillTps,
       uncachedPrefillTps: this.uncachedPrefillTps,
+      totalPrefillTokens: this.totalPrefillTokens,
+      totalCachedPrefillTokens: this.totalCachedPrefillTokens,
+      totalUncachedPrefillTokens: this.totalUncachedPrefillTokens,
       totalOutputTokens: this.totalOutputTokens,
       kvCacheUsage: this.kvCacheUsage,
       requestsRunning: this.requestsRunning,
@@ -1398,7 +1489,12 @@ export class LlmProbe {
       prefillTps: 0,
       cachedPrefillTps: null,
       uncachedPrefillTps: null,
-      totalOutputTokens: 0,
+      // Omit while unavailable so cleared backend/model labels do not create
+      // a second Prometheus series. The internal lifetime state is preserved.
+      totalPrefillTokens: null,
+      totalCachedPrefillTokens: null,
+      totalUncachedPrefillTokens: null,
+      totalOutputTokens: null,
       kvCacheUsage: null,
       requestsRunning: null,
       requestsWaiting: null,

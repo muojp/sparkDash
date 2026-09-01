@@ -355,8 +355,14 @@ export interface LlmMetrics {
   cachedPrefillTps?: number | null;
   /** Live uncached/computed prefill tok/s when split is available. */
   uncachedPrefillTps?: number | null;
-  /** Cumulative total output (generation) tokens as reported by the LLM server */
-  totalOutputTokens: number;
+  /** Restart-safe cumulative prefill/input tokens derived from backend counters. */
+  totalPrefillTokens: number | null;
+  /** Restart-safe cumulative prefix-cache-hit input tokens. */
+  totalCachedPrefillTokens?: number | null;
+  /** Restart-safe cumulative non-cached input tokens. */
+  totalUncachedPrefillTokens?: number | null;
+  /** Restart-safe cumulative output/generation tokens derived from backend counters. */
+  totalOutputTokens: number | null;
   /** vLLM KV cache usage fraction (0–1). null when backend !== vllm or unreachable. */
   kvCacheUsage?: number | null;
   /** vLLM running request count. null when unavailable. */

@@ -14,6 +14,8 @@ vllm:kv_cache_usage_perc{engine="0"} 0.42
 vllm:num_preemptions_total{engine="0"} 3.0
 vllm:prefix_cache_hits_total{engine="0"} 10.0
 vllm:prefix_cache_queries_total{engine="0"} 20.0
+vllm:prompt_tokens_by_source_total{engine="0",source="local_compute"} 200.0
+vllm:prompt_tokens_by_source_total{engine="0",source="local_cache_hit"} 800.0
 vllm:spec_decode_num_accepted_tokens_total{engine="0"} 8.0
 vllm:spec_decode_num_draft_tokens_total{engine="0"} 10.0
 `;
@@ -35,6 +37,36 @@ function textRes(txt, status = 200) {
     json: async () => ({}),
   };
 }
+
+test("lifetime token totals add deltas and stay monotonic across backend counter resets", () => {
+  const probe = new LlmProbe({ lanIp: "10.0.0.1" }, 8000);
+  probe._updateLifetimeTokenTotals(1000, 500, 800, 200);
+  assert.equal(probe.totalPrefillTokens, 1000);
+  assert.equal(probe.totalCachedPrefillTokens, 800);
+  assert.equal(probe.totalUncachedPrefillTokens, 200);
+  assert.equal(probe.totalOutputTokens, 500);
+
+  probe._updateLifetimeTokenTotals(1200, 700, 950, 250);
+  assert.equal(probe.totalPrefillTokens, 1200);
+  assert.equal(probe.totalOutputTokens, 700);
+  assert.equal(probe.totalCachedPrefillTokens, 950);
+  assert.equal(probe.totalUncachedPrefillTokens, 250);
+
+  // Backend restart: raw counters drop. Count the new values as post-reset deltas.
+  probe._updateLifetimeTokenTotals(20, 10, 15, 5);
+  assert.equal(probe.totalPrefillTokens, 1220);
+  assert.equal(probe.totalOutputTokens, 710);
+  assert.equal(probe.totalCachedPrefillTokens, 965);
+  assert.equal(probe.totalUncachedPrefillTokens, 255);
+
+  // Detection resets happen during backend restarts but must not erase lifetime state.
+  probe._resetDetection();
+  probe._updateLifetimeTokenTotals(30, 15, 22, 8);
+  assert.equal(probe.totalPrefillTokens, 1230);
+  assert.equal(probe.totalOutputTokens, 715);
+  assert.equal(probe.totalCachedPrefillTokens, 972);
+  assert.equal(probe.totalUncachedPrefillTokens, 258);
+});
 
 test("vLLM detect: /v1/models + vllm /metrics → vllm (not ds4/sglang)", async () => {
   const probe = new LlmProbe({ lanIp: "10.0.0.1" }, 8000);
@@ -98,6 +130,10 @@ test("vLLM probe: counter diffs + tiles; skips get_server_info when known vllm",
   assert.equal(snap.preemptionsTotal, 3);
   assert.equal(snap.prefixCacheHitRate, 0.5);
   assert.equal(snap.mtpAcceptanceRate, 0.8);
+  assert.equal(snap.totalPrefillTokens, 1200);
+  assert.equal(snap.totalCachedPrefillTokens, 800);
+  assert.equal(snap.totalUncachedPrefillTokens, 200);
+  assert.equal(snap.totalOutputTokens, 900);
   assert.equal(snap.available, true);
   assert.ok(!hits.some((h) => h.includes("get_server_info")));
 });
@@ -262,7 +298,7 @@ test("llama.cpp probe: slot deltas → tok/s; props for model", async () => {
   assert.equal(snap.slotsActive, 1);
   assert.equal(snap.generationTps, 20); // (50-10)/2
   assert.equal(snap.prefillTps, 10); // (25-5)/2
-  assert.equal(snap.totalOutputTokens, 50);
+  assert.equal(snap.totalOutputTokens, null);
   assert.equal(snap.available, true);
   assert.equal(snap.cachedPrefillTps, null);
   assert.equal(snap.uncachedPrefillTps, null);

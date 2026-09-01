@@ -314,6 +314,7 @@ test("_applySglangServerInfo: prefers total_* counter diffs over last_gen", () =
   );
   assert.equal(probe.generationTps, 50); // (150-50)/2
   assert.equal(probe.prefillTps, 100); // (300-100)/2
+  assert.equal(probe.totalPrefillTokens, 300);
   assert.equal(probe.totalOutputTokens, 150);
 });
 
@@ -448,7 +449,7 @@ test("probe: reachable SGLang without sleep metric is Active, not Sleeping", asy
   assert.equal(snap.available, true);
   assert.equal(snap.backend, "sglang");
   assert.equal(snap.gpuMemoryUtilization, 1);
-  assert.equal(snap.totalOutputTokens, 0);
+  assert.equal(snap.totalOutputTokens, null);
 });
 
 test("probe: /v1/loads inflight keeps last_gen on the first sample", async () => {
