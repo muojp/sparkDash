@@ -1164,7 +1164,12 @@
         {
           "refId": "A",
           "expr": "rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[5m])",
-          "legendFormat": "{{name}}:{{port}}"
+          "legendFormat": "{{name}}:{{port}} - 5m rate"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[1h])",
+          "legendFormat": "{{name}}:{{port}} - 1h avg"
         }
       ]
     },
