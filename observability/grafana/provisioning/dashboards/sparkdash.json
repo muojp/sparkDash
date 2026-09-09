@@ -101,7 +101,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_up{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_up{spark=~\"$spark\"})",
           "legendFormat": "{{name}}",
           "instant": true
         }
@@ -139,7 +139,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_gpu_temperature_celsius{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_gpu_temperature_celsius{spark=~\"$spark\"})",
           "legendFormat": "{{name}}",
           "instant": true
         }
@@ -177,7 +177,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_unified_memory_usage_percent{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_unified_memory_usage_percent{spark=~\"$spark\"})",
           "legendFormat": "{{name}}",
           "instant": true
         }
@@ -215,7 +215,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_system_power_draw_watts{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_system_power_draw_watts{spark=~\"$spark\"})",
           "legendFormat": "{{name}}",
           "instant": true
         }
@@ -264,7 +264,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "label_replace(sparkdash_rdma_link_speed_mbps{spark=~\"$spark\",hca!~\"(roce)?[pP]2.*\"} and on(spark,hca,port) sparkdash_rdma_port_active == 1, \"hca\", \"$1\", \"hca\", \"roce(.*)\")",
+          "expr": "max by (spark, name, hca) (label_replace(sparkdash_rdma_link_speed_mbps{spark=~\"$spark\",hca!~\"(roce)?[pP]2.*\"} and on(spark,hca,port) sparkdash_rdma_port_active == 1, \"hca\", \"$1\", \"hca\", \"roce(.*)\"))",
           "legendFormat": "{{name}} {{hca}}",
           "instant": true
         }
@@ -511,13 +511,13 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) / 1000",
+          "expr": "max by (spark, name, port) ((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) / 1000)",
           "legendFormat": "input",
           "instant": true
         },
         {
           "refId": "B",
-          "expr": "sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} / 1000",
+          "expr": "max by (spark, name, port) (sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} / 1000)",
           "legendFormat": "(+ cached)",
           "instant": true
         }
@@ -654,7 +654,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_llm_output_tokens_total{spark=~\"$spark\"} / 1000",
+          "expr": "max by (spark, name, port) (sparkdash_llm_output_tokens_total{spark=~\"$spark\"} / 1000)",
           "legendFormat": "output",
           "instant": true
         }
@@ -707,7 +707,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_gpu_clock_cap_active{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_gpu_clock_cap_active{spark=~\"$spark\"})",
           "legendFormat": "{{name}}",
           "instant": true
         }
@@ -745,7 +745,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_gpu_clock_cap_sm_clock_mhz{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_gpu_clock_cap_sm_clock_mhz{spark=~\"$spark\"})",
           "legendFormat": "{{name}}",
           "instant": true
         }
@@ -757,7 +757,7 @@
       "title": "GPU / Memory (Prometheus)",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 42,
         "w": 24,
         "h": 1
       },
@@ -774,7 +774,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 43,
         "w": 12,
         "h": 8
       },
@@ -802,7 +802,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_gpu_usage_percent{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_gpu_usage_percent{spark=~\"$spark\"})",
           "legendFormat": "{{name}}"
         }
       ]
@@ -817,7 +817,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 35,
+        "y": 43,
         "w": 12,
         "h": 8
       },
@@ -843,7 +843,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_gpu_temperature_celsius{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_gpu_temperature_celsius{spark=~\"$spark\"})",
           "legendFormat": "{{name}}"
         }
       ]
@@ -858,7 +858,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -884,17 +884,17 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_gpu_power_draw_watts{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_gpu_power_draw_watts{spark=~\"$spark\"})",
           "legendFormat": "{{name}} GPU"
         },
         {
           "refId": "B",
-          "expr": "sparkdash_cpu_power_draw_watts{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_cpu_power_draw_watts{spark=~\"$spark\"})",
           "legendFormat": "{{name}} CPU"
         },
         {
           "refId": "C",
-          "expr": "sparkdash_system_power_draw_watts{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_system_power_draw_watts{spark=~\"$spark\"})",
           "legendFormat": "{{name}} system"
         }
       ]
@@ -909,7 +909,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 43,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -935,12 +935,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_unified_memory_gpu_used_bytes{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_unified_memory_gpu_used_bytes{spark=~\"$spark\"})",
           "legendFormat": "{{name}} GPU"
         },
         {
           "refId": "B",
-          "expr": "sparkdash_unified_memory_cpu_used_bytes{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_unified_memory_cpu_used_bytes{spark=~\"$spark\"})",
           "legendFormat": "{{name}} CPU"
         }
       ]
@@ -948,7 +948,7 @@
     {
       "id": 16,
       "type": "timeseries",
-      "title": "RDMA / RoCE throughput (ConnectX-7 IB counters — TP traffic; invisible to /proc/net/dev)",
+      "title": "RDMA / RoCE throughput (ConnectX-7 IB counters — TP traffic; invisible to /proc/net/dev) — 1m avg",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
@@ -981,13 +981,146 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "8 * rate(sparkdash_rdma_receive_bytes_total{spark=~\"$spark\"}[1m]) > 0",
+          "expr": "max by (spark, name, hca) (8 * rate(sparkdash_rdma_receive_bytes_total{spark=~\"$spark\"}[1m]) > 0)",
           "legendFormat": "{{name}} {{hca}} rx"
         },
         {
           "refId": "B",
-          "expr": "8 * rate(sparkdash_rdma_transmit_bytes_total{spark=~\"$spark\"}[1m]) > 0",
+          "expr": "max by (spark, name, hca) (8 * rate(sparkdash_rdma_transmit_bytes_total{spark=~\"$spark\"}[1m]) > 0)",
           "legendFormat": "{{name}} {{hca}} tx"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "RDMA link probe — throughput (ib_write_bw 2 s / 30 min, both directions, idle only; single QP RC) vs 1m avg",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* 1m avg$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    4
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (spark, hca, src, dst) (sparkdash_rdma_probe_bandwidth_bps{spark=~\"$spark\"})",
+          "legendFormat": "{{src}}→{{dst}} probe"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (spark, name, hca) (8 * rate(sparkdash_rdma_transmit_bytes_total{spark=~\"$spark\",hca=\"rocep1s0f0\"}[1m]))",
+          "legendFormat": "{{name}} {{hca}} tx 1m avg"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "RDMA link probe — latency (ib_write_lat 2 B write, 500k iters / 30 min, both directions)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (spark, hca, src, dst) (sparkdash_rdma_probe_latency_seconds{spark=~\"$spark\",stat=\"typical\"} * 1e6)",
+          "legendFormat": "{{src}}→{{dst}} typical"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (spark, hca, src, dst) (sparkdash_rdma_probe_latency_seconds{spark=~\"$spark\",stat=\"p99\"} * 1e6)",
+          "legendFormat": "{{src}}→{{dst}} p99"
+        },
+        {
+          "refId": "C",
+          "expr": "max by (spark, hca, src, dst) (sparkdash_rdma_probe_latency_seconds{spark=~\"$spark\",stat=\"p999\"} * 1e6)",
+          "legendFormat": "{{src}}→{{dst}} p99.9"
+        },
+        {
+          "refId": "D",
+          "expr": "max by (spark, hca, src, dst) (sparkdash_rdma_probe_latency_seconds{spark=~\"$spark\",stat=\"max\"} * 1e6)",
+          "legendFormat": "{{src}}→{{dst}} max"
         }
       ]
     },
@@ -1001,7 +1134,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 59,
         "w": 12,
         "h": 8
       },
@@ -1027,7 +1160,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_gpu_sm_clock_mhz{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_gpu_sm_clock_mhz{spark=~\"$spark\"})",
           "legendFormat": "{{name}}"
         }
       ]
@@ -1055,7 +1188,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -1081,7 +1214,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_llm_generation_tokens_per_second{spark=~\"$spark\"}",
+          "expr": "max by (spark, name, port, model) (sparkdash_llm_generation_tokens_per_second{spark=~\"$spark\"})",
           "legendFormat": "{{name}}:{{port}} {{model}}"
         }
       ]
@@ -1096,7 +1229,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -1122,7 +1255,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_llm_prefill_tokens_per_second{spark=~\"$spark\"}",
+          "expr": "max by (spark, name, port) (sparkdash_llm_prefill_tokens_per_second{spark=~\"$spark\"})",
           "legendFormat": "{{name}}:{{port}}"
         }
       ]
@@ -1163,12 +1296,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[5m])",
+          "expr": "max by (spark, name, port) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[5m]))",
           "legendFormat": "{{name}}:{{port}} - 5m rate"
         },
         {
           "refId": "B",
-          "expr": "rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[1h])",
+          "expr": "max by (spark, name, port) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[1h]))",
           "legendFormat": "{{name}}:{{port}} - 1h avg"
         }
       ]
@@ -1183,7 +1316,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 18,
+        "y": 26,
         "w": 12,
         "h": 8
       },
@@ -1209,17 +1342,17 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_llm_kv_cache_usage_ratio{spark=~\"$spark\"}",
+          "expr": "max by (spark, name, port) (sparkdash_llm_kv_cache_usage_ratio{spark=~\"$spark\"})",
           "legendFormat": "{{name}}:{{port}} kv"
         },
         {
           "refId": "B",
-          "expr": "sparkdash_llm_requests_running{spark=~\"$spark\"}",
+          "expr": "max by (spark, name, port) (sparkdash_llm_requests_running{spark=~\"$spark\"})",
           "legendFormat": "{{name}}:{{port}} running"
         },
         {
           "refId": "C",
-          "expr": "sparkdash_llm_requests_waiting{spark=~\"$spark\"}",
+          "expr": "max by (spark, name, port) (sparkdash_llm_requests_waiting{spark=~\"$spark\"})",
           "legendFormat": "{{name}}:{{port}} waiting"
         }
       ]
@@ -1246,7 +1379,9 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "pointSize": 3,
-            "showPoints": "auto"
+            "showPoints": "auto",
+            "lineInterpolation": "linear",
+            "spanNulls": true
           }
         },
         "overrides": [
@@ -1272,7 +1407,9 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": ["lastNotNull"]
+          "calcs": [
+            "lastNotNull"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -1283,17 +1420,17 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_llm_output_tokens_total{spark=~\"$spark\"} / 1000",
+          "expr": "max by (spark, name, port) ((sparkdash_llm_output_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_output_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
           "legendFormat": "{{name}}:{{port}} output"
         },
         {
           "refId": "B",
-          "expr": "(sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) / 1000",
+          "expr": "max by (spark, name, port) (((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) or (last_over_time((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) and (max_over_time(timestamp(sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
           "legendFormat": "{{name}}:{{port}} non-cached prefill"
         },
         {
           "refId": "C",
-          "expr": "sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} / 1000",
+          "expr": "max by (spark, name, port) ((sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
           "legendFormat": "{{name}}:{{port}} cached prefill"
         }
       ]
@@ -1304,7 +1441,7 @@
       "title": "CPU / Network / Storage",
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 67,
         "w": 24,
         "h": 1
       },
@@ -1321,7 +1458,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 68,
         "w": 12,
         "h": 8
       },
@@ -1349,7 +1486,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_cpu_usage_percent{spark=~\"$spark\"}",
+          "expr": "max by (spark, name) (sparkdash_cpu_usage_percent{spark=~\"$spark\"})",
           "legendFormat": "{{name}}"
         }
       ]
@@ -1364,7 +1501,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 60,
+        "y": 68,
         "w": 12,
         "h": 8
       },
@@ -1390,12 +1527,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(sparkdash_network_receive_bytes_total{spark=~\"$spark\"}[1m])",
+          "expr": "max by (spark, name, interface) (rate(sparkdash_network_receive_bytes_total{spark=~\"$spark\"}[1m]))",
           "legendFormat": "{{name}} {{interface}} rx"
         },
         {
           "refId": "B",
-          "expr": "rate(sparkdash_network_transmit_bytes_total{spark=~\"$spark\"}[1m])",
+          "expr": "max by (spark, name, interface) (rate(sparkdash_network_transmit_bytes_total{spark=~\"$spark\"}[1m]))",
           "legendFormat": "{{name}} {{interface}} tx"
         }
       ]
@@ -1410,7 +1547,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 76,
         "w": 12,
         "h": 8
       },
@@ -1436,12 +1573,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(sparkdash_storage_read_bytes_total{spark=~\"$spark\"}[1m])",
+          "expr": "max by (spark, name, label) (rate(sparkdash_storage_read_bytes_total{spark=~\"$spark\"}[1m]))",
           "legendFormat": "{{name}} {{label}} read"
         },
         {
           "refId": "B",
-          "expr": "rate(sparkdash_storage_write_bytes_total{spark=~\"$spark\"}[1m])",
+          "expr": "max by (spark, name, label) (rate(sparkdash_storage_write_bytes_total{spark=~\"$spark\"}[1m]))",
           "legendFormat": "{{name}} {{label}} write"
         }
       ]
@@ -1456,7 +1593,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 68,
+        "y": 76,
         "w": 12,
         "h": 8
       },
@@ -1484,7 +1621,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sparkdash_storage_usage_percent{spark=~\"$spark\"}",
+          "expr": "max by (spark, name, label) (sparkdash_storage_usage_percent{spark=~\"$spark\"})",
           "legendFormat": "{{name}} {{label}}"
         }
       ]
@@ -1495,7 +1632,7 @@
       "title": "Same data via InfluxDB (push path)",
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 84,
         "w": 24,
         "h": 1
       },
@@ -1512,7 +1649,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 77,
+        "y": 85,
         "w": 12,
         "h": 8
       },
@@ -1554,7 +1691,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 77,
+        "y": 85,
         "w": 12,
         "h": 8
       },

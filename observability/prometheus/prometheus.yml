@@ -7,7 +7,17 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       # One sparkDash instance exposes every unit it monitors.
-      # Default: sparkDash running on the same Docker host.
-      - targets: ["host.docker.internal:5555"]
+      # Primary route: real deployment on the DGX Spark head node (dgx01).
+      - targets: ["192.168.0.100:5555"]
         labels:
           site: local
+
+  # RDMA link probe: ib_write_bw / ib_write_lat every 30 min, both directions, when idle (see ../rdma-probe/).
+  - job_name: rdma-probe
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["192.168.0.100:9105"]
+        labels:
+          site: local
+          spark: dgx01
+          name: dgx01

@@ -225,6 +225,46 @@ sudo rule; it never changes boot enablement. The service itself must be
 installed and enabled separately on every applicable host. Neither Grafana nor
 Prometheus is needed to apply or toggle the cap.
 
+### RDMA link probe (headroom on the TP link)
+
+The RoCE throughput panel is `rate()` over sparkDash's byte counters. sparkDash
+polls sysfs every 2 s and Prometheus scrapes every 5 s, so successive scrape
+deltas alternate between ~6 s and ~4 s worth of traffic: any "instantaneous"
+rate derived from the counters is off by ±20 % even under steady load, and a
+1 m average hides bursts entirely. Neither can tell you how much of the link is
+still available.
+
+`observability/rdma-probe/` measures that directly. A small exporter on the
+head node runs `ib_write_bw -D 2` and `ib_write_lat -n 500000` against the
+worker over the TP HCA every 30 minutes, in **both directions** (RDMA write
+performance has been seen to degrade on one node only), **only when** sparkDash reports no
+running or queued LLM requests and the link has been idle for a second, and
+serves the result on `:9105/metrics`:
+
+| Metric | Meaning |
+|---|---|
+| `sparkdash_rdma_probe_bandwidth_bps{hca,src,dst,msg_bytes}` | 2 s `ib_write_bw` average, single RC QP, `src` writes to `dst` |
+| `sparkdash_rdma_probe_latency_seconds{hca,src,dst,stat}` | `ib_write_lat` 2-byte write measured at `src`: `min` `max` `typical` `avg` `stdev` `p99` `p999` |
+| `sparkdash_rdma_probe_success`, `..._last_success_timestamp_seconds` | freshness of the value above |
+| `sparkdash_rdma_probe_runs_total`, `..._failures_total`, `..._skipped_total` | attempts, failures, slots skipped because busy |
+
+For each run the perftest server (forward direction) or client (reverse
+direction) is started on the peer over SSH, so only the head node needs a
+service. Install (per-user systemd, no root):
+
+```bash
+scp observability/rdma-probe/rdma_probe_exporter.py dgx01:~/rdma-probe/
+scp observability/rdma-probe/rdma-probe.service   dgx01:~/.config/systemd/user/
+ssh dgx01 'loginctl enable-linger $USER && systemctl --user daemon-reload && systemctl --user enable --now rdma-probe'
+```
+
+HCA, peer, interval and durations are `Environment=` lines in the unit. The
+`rdma-probe` scrape job in `prometheus/prometheus.yml` points at the head node;
+the dashboard's *RDMA link probe* panels plot the probe next to the 1 m
+counter average so utilisation vs. headroom is visible at a glance. A single
+QP tops out around 109 Gb/s on DGX Spark (PCIe-bound, not the 200 G link);
+raise `-q` in the exporter if you want the wire limit instead.
+
 ## 4. Design notes
 
 * **Why not `prom-client`?** The metric set is fixed and described in one

@@ -1,0 +1,32 @@
+# systemd --user unit for the RDMA link probe exporter.
+#
+#   mkdir -p ~/.config/systemd/user ~/rdma-probe
+#   cp rdma_probe_exporter.py ~/rdma-probe/
+#   cp rdma-probe.service ~/.config/systemd/user/
+#   loginctl enable-linger $USER          # keep it running without a login session
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now rdma-probe
+#   curl localhost:9105/metrics
+#
+# Requires: perftest (ib_write_bw / ib_write_lat) on both nodes, passwordless
+# SSH to the peer, sparkDash on :5555 for the LLM idle gate.
+[Unit]
+Description=sparkDash RDMA link probe exporter (ib_write_bw / ib_write_lat every 30 min when idle)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/rdma-probe/rdma_probe_exporter.py
+Environment=RDMA_PROBE_HCA=rocep1s0f0
+Environment=RDMA_PROBE_PEER=dgx02
+Environment=RDMA_PROBE_PEER_SSH=dgx02
+Environment=RDMA_PROBE_PEER_IP=192.168.100.40
+Environment=RDMA_PROBE_LOCAL=dgx01
+Environment=RDMA_PROBE_LOCAL_IP=192.168.100.30
+Environment=RDMA_PROBE_INTERVAL=1800
+Environment=RDMA_PROBE_BW_DURATION=2
+Environment=RDMA_PROBE_LAT_ITERS=500000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
