@@ -40,6 +40,7 @@ function textRes(txt, status = 200) {
 
 test("lifetime token totals add deltas and stay monotonic across backend counter resets", () => {
   const probe = new LlmProbe({ lanIp: "10.0.0.1" }, 8000);
+  probe.modelId = "test-model"; // lifetime totals are keyed per served model
   probe._updateLifetimeTokenTotals(1000, 500, 800, 200);
   assert.equal(probe.totalPrefillTokens, 1000);
   assert.equal(probe.totalCachedPrefillTokens, 800);
@@ -60,7 +61,12 @@ test("lifetime token totals add deltas and stay monotonic across backend counter
   assert.equal(probe.totalUncachedPrefillTokens, 255);
 
   // Detection resets happen during backend restarts but must not erase lifetime state.
+  // While the served model is unknown nothing is credited (there is no series to
+  // credit it to); the sample after re-detection carries the increment.
   probe._resetDetection();
+  probe._updateLifetimeTokenTotals(25, 12, 18, 7);
+  assert.equal(probe.totalPrefillTokens, 1220);
+  probe.modelId = "test-model";
   probe._updateLifetimeTokenTotals(30, 15, 22, 8);
   assert.equal(probe.totalPrefillTokens, 1230);
   assert.equal(probe.totalOutputTokens, 715);
@@ -257,6 +263,7 @@ test("llama.cpp detect: /slots array wins over OpenAI paths", async () => {
 
 test("llama.cpp probe: slot deltas → tok/s; props for model", async () => {
   const probe = new LlmProbe({ lanIp: "10.0.0.1" }, 8080);
+  probe.modelId = "test-model"; // lifetime totals are keyed per served model
   probe.serverIsOpenAI = false;
   probe.backendType = "llama.cpp";
   probe.authOpen = true;

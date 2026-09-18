@@ -76,6 +76,7 @@ test("_detectServerType: OpenAI models + /health ok+busy → exl3 (not vllm)", a
 
 test("_applyExl3Health: counter diffs → tok/s; idle → 0", () => {
   const probe = new LlmProbe({ lanIp: "127.0.0.1" }, 8888);
+  probe.modelId = "test-model"; // lifetime totals are keyed per served model
   probe._applyExl3Health(
     {
       ok: true,

@@ -303,6 +303,7 @@ test("_sglangStickyThroughput: expires to 0 after live window", () => {
 
 test("_applySglangServerInfo: prefers total_* counter diffs over last_gen", () => {
   const probe = new LlmProbe({ lanIp: "10.0.0.1" }, 30000);
+  probe.modelId = "test-model"; // lifetime totals are keyed per served model
   probe.lastTokenCounts = { input: 100, output: 50 };
   probe._applySglangServerInfo(
     {

@@ -223,3 +223,23 @@ test("gpu_memory_controller_util_percent is exported when present and omitted wh
   assert.equal(flattenSnapshot(mk(37)).find((x) => x.name === "gpu_memory_controller_util_percent").value, 37);
   assert.ok(!flattenSnapshot(mk(null)).some((x) => x.name === "gpu_memory_controller_util_percent"));
 });
+
+test("llm lifetime totals of switched-out models are exported under their own model label", () => {
+  const s = JSON.parse(JSON.stringify(snap));
+  s.metrics.llm[0].lifetimeByModel = [
+    { model: "deepseek-v4-flash", totalInput: 2_111_984_950, totalOutput: 57_501_339, totalCachedInput: 1_926_823_424, totalUncachedInput: 185_161_526 },
+    { model: "org/model", totalInput: 1, totalOutput: 1, totalCachedInput: 1, totalUncachedInput: 1 },
+  ];
+  const out = flattenSnapshot(s);
+  // the live model keeps its live values, not the stored copy
+  assert.equal(find(out, "llm_output_tokens_total", { port: "8888", model: "org/model" }).value, 9999);
+  const ds = find(out, "llm_output_tokens_total", { port: "8888", model: "deepseek-v4-flash" });
+  assert.equal(ds.value, 57_501_339);
+  assert.equal(ds.type, "counter");
+  assert.equal(ds.labels.backend, "vllm");
+  assert.equal(find(out, "llm_prefill_tokens_total", { port: "8888", model: "deepseek-v4-flash" }).value, 2_111_984_950);
+  assert.equal(find(out, "llm_cached_prefill_tokens_total", { port: "8888", model: "deepseek-v4-flash" }).value, 1_926_823_424);
+  assert.equal(find(out, "llm_decode_tokens_total", { port: "8888", model: "deepseek-v4-flash" }).value, 57_501_339);
+  // no live gauges for a model that is not being served
+  assert.equal(find(out, "llm_generation_tokens_per_second", { port: "8888", model: "deepseek-v4-flash" }), undefined);
+});

@@ -162,6 +162,8 @@ export class LlmProbe {
     // other than the one it was measured on. Switching this port between two
     // models used to continue the previous model's totals under the new
     // model's label.
+    // Until the served model name is known there is no series to credit.
+    if (!this.modelId) return;
     const persisted = llmLifetime.update(
       String(this.spark?.id || ""),
       this.port,
@@ -1467,6 +1469,7 @@ export class LlmProbe {
       totalCachedPrefillTokens: this.totalCachedPrefillTokens,
       totalUncachedPrefillTokens: this.totalUncachedPrefillTokens,
       totalOutputTokens: this.totalOutputTokens,
+      lifetimeByModel: this._lifetimeByModel(),
       kvCacheUsage: this.kvCacheUsage,
       requestsRunning: this.requestsRunning,
       requestsWaiting: this.requestsWaiting,
@@ -1479,6 +1482,11 @@ export class LlmProbe {
       posture: this._buildPosture(),
       error: this.error,
     };
+  }
+
+  /** Stored lifetime totals of every model seen on this spark:port (see LlmLifetime.entries). */
+  _lifetimeByModel() {
+    return llmLifetime.entries(String(this.spark?.id || ""), this.port);
   }
 
   _defaultLlm() {
@@ -1501,6 +1509,7 @@ export class LlmProbe {
       totalCachedPrefillTokens: null,
       totalUncachedPrefillTokens: null,
       totalOutputTokens: null,
+      lifetimeByModel: this._lifetimeByModel(),
       kvCacheUsage: null,
       requestsRunning: null,
       requestsWaiting: null,

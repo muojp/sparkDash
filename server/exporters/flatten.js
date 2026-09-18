@@ -317,6 +317,18 @@ export function flattenSnapshot(snap) {
     push("llm_cached_prefill_tokens_total", llm.totalCachedPrefillTokens, l);
     push("llm_uncached_prefill_tokens_total", llm.totalUncachedPrefillTokens, l);
     push("llm_output_tokens_total", llm.totalOutputTokens, l);
+    // Lifetime totals of the other models this port has served, from the
+    // persisted store: a switched-out model keeps its series (and its value)
+    // instead of disappearing while the other checkpoint is loaded.
+    for (const e of Array.isArray(llm.lifetimeByModel) ? llm.lifetimeByModel : []) {
+      if (!e || !e.model || String(e.model) === l.model) continue;
+      const lm = { ...l, model: String(e.model) };
+      push("llm_decode_tokens_total", e.totalOutput, lm);
+      push("llm_prefill_tokens_total", e.totalInput, lm);
+      push("llm_cached_prefill_tokens_total", e.totalCachedInput, lm);
+      push("llm_uncached_prefill_tokens_total", e.totalUncachedInput, lm);
+      push("llm_output_tokens_total", e.totalOutput, lm);
+    }
     if (llm.contextLength != null) push("llm_context_length", llm.contextLength, l);
     if (llm.gpuMemoryUtilization != null) push("llm_gpu_memory_utilization_ratio", llm.gpuMemoryUtilization, l);
     if (llm.kvCacheUsage != null) push("llm_kv_cache_usage_ratio", llm.kvCacheUsage, l);

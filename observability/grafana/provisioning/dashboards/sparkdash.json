@@ -916,9 +916,14 @@
           "refId": "C",
           "expr": "max by (spark, name, port, model) ((sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
           "legendFormat": "{{name}}:{{port}} {{model}} cached prefill"
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (spark, name, port) (max by (spark, name, port, model) (sparkdash_llm_output_tokens_total{spark=~\"$spark\"})) / 1000",
+          "legendFormat": "{{name}}:{{port}} all models output"
         }
       ],
-      "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
+      "description": "sparkDash lifetime totals keyed on spark:port:model. Every model this port has served keeps its own series (a switched-out model holds its last value while the other checkpoint is loaded); the 'all models' line is their sum, i.e. the port's restart-safe lifetime across model switches. The vLLM-native row below shows the backend's own per-model counters."
     },
     {
       "id": 16,

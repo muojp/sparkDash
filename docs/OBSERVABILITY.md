@@ -142,7 +142,12 @@ total under its own `model` label. An entry written before the split is
 adopted by the running model when its input counter has not gone backwards
 (same process, so those totals are its own) and otherwise parked under a
 `…:__pre_model_split__` key, since nothing in the file says which model earned
-it. For per-model token accounting straight from the backend — including the
+it (the same applies to a `spark:port:` entry, which a probe wrote when it
+persisted before the served model name was known — nothing is persisted in
+that state any more). Every model's stored totals for a port are exported, each
+under its own `model` label, so a switched-out model keeps its series at its
+last value while the other checkpoint is loaded and `sum by (spark, port)` over
+the models is the port's restart-safe lifetime. For per-model token accounting straight from the backend — including the
 `local_compute` / `local_cache_hit` split of the prompt side — scrape vLLM's
 own endpoint as well; see `../observability/vllm-metrics/README.md`.
 For example, llama.cpp's per-request `/slots` values reset when slots are

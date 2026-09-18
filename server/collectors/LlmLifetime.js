@@ -27,11 +27,19 @@ function seriesKey(sparkId, port, model) {
   return `${sparkId}:${port}:${model ?? ""}`;
 }
 
-/** Key used before totals were split per model, and where such an entry is parked. */
-function legacyKey(sparkId, port) {
-  return `${sparkId}:${port}`;
+/**
+ * Keys written before totals were split per model: the original `spark:port`,
+ * and `spark:port:` — the shape a probe produced when it persisted before the
+ * served model name was known. Neither is a model series; both are migrated.
+ */
+function legacyKeys(sparkId, port) {
+  return [`${sparkId}:${port}`, `${sparkId}:${port}:`];
 }
 const PRE_SPLIT_SUFFIX = "__pre_model_split__";
+
+function isModelName(model) {
+  return typeof model === "string" && model !== "" && model !== PRE_SPLIT_SUFFIX;
+}
 
 export class LlmLifetimeStore {
   constructor(filePath = LLM_LIFETIME_JSON_PATH) {
@@ -63,9 +71,17 @@ export class LlmLifetimeStore {
    * it, it just stops the history from being silently reassigned or lost.
    */
   _migrateLegacy(sparkId, port, key, input) {
-    const legacy = legacyKey(sparkId, port);
+    const legacy = legacyKeys(sparkId, port).find((k) => this._data[k]);
+    if (!legacy) return;
     const entry = this._data[legacy];
-    if (!entry || this._data[key]) return;
+    if (this._data[key]) {
+      // The model already has its own series: the old entry cannot be its
+      // continuation, so it is parked (never merged, never dropped).
+      this._data[seriesKey(sparkId, port, PRE_SPLIT_SUFFIX)] = { ...entry };
+      delete this._data[legacy];
+      atomicWrite(this.filePath, JSON.stringify(this._data));
+      return;
+    }
     const current = finiteCounter(input);
     const stored = finiteCounter(entry.rawInput);
     const continues = current != null && stored != null && current >= stored;
@@ -87,6 +103,10 @@ export class LlmLifetimeStore {
    */
   update(sparkId, port, input, output, cachedInput = null, uncachedInput = null, model = null) {
     if (!sparkId || !Number.isInteger(Number(port))) return null;
+    // No served model name yet (backend still booting, /v1/models not answered):
+    // nothing is persisted. Keying on an empty model once orphaned a port's whole
+    // history under `spark:port:` — an entry no series is labelled with.
+    if (!isModelName(model)) return null;
     const key = seriesKey(sparkId, Number(port), model);
     this._migrateLegacy(sparkId, Number(port), key, input);
     const previous = this._data[key] || {
@@ -131,6 +151,34 @@ export class LlmLifetimeStore {
     this._data[key] = next;
     if (changed) atomicWrite(this.filePath, JSON.stringify(this._data));
     return { ...next };
+  }
+
+  /**
+   * Every model's lifetime totals stored for one spark:port, so a model that is
+   * not the one currently served (switched out, or the port is between
+   * backends) keeps an exported series instead of vanishing from the graphs.
+   * Parked pre-split entries are not included.
+   * @param {string} sparkId
+   * @param {number} port
+   * @returns {Array<{model: string, totalInput: number|null, totalOutput: number|null, totalCachedInput: number|null, totalUncachedInput: number|null}>}
+   */
+  entries(sparkId, port) {
+    if (!sparkId || !Number.isInteger(Number(port))) return [];
+    const prefix = `${sparkId}:${Number(port)}:`;
+    const out = [];
+    for (const [key, entry] of Object.entries(this._data)) {
+      if (!key.startsWith(prefix) || !entry) continue;
+      const model = key.slice(prefix.length);
+      if (!isModelName(model)) continue;
+      out.push({
+        model,
+        totalInput: finiteCounter(entry.totalInput),
+        totalOutput: finiteCounter(entry.totalOutput),
+        totalCachedInput: finiteCounter(entry.totalCachedInput),
+        totalUncachedInput: finiteCounter(entry.totalUncachedInput),
+      });
+    }
+    return out.sort((a, b) => a.model.localeCompare(b.model));
   }
 }
 
