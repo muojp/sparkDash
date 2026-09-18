@@ -129,6 +129,22 @@ backend restart makes a counter decrease, the new value is treated as the
 increment since reset, so the exported counter remains monotonic across both
 inference-backend and sparkDash restarts. (A reset and complete catch-up
 past the old value between two polls cannot be detected.)
+
+Each stored series is keyed by **spark, port and model** — the same tuple that
+labels the exported series — so a total can never be credited to a series
+other than the one it was measured on. This matters wherever one port serves
+different models at different times: a 2x DGX Spark pair holds one 300B-class
+checkpoint at a time, so switching between, say, DeepSeek-v4-Flash and
+GLM-5.3-Flash on port 8888 is the normal way to run them. Keyed on spark and
+port alone (before 2026-09-18) such a switch read as one backend that kept
+resetting, and the incoming model inherited the outgoing model's lifetime
+total under its own `model` label. An entry written before the split is
+adopted by the running model when its input counter has not gone backwards
+(same process, so those totals are its own) and otherwise parked under a
+`…:__pre_model_split__` key, since nothing in the file says which model earned
+it. For per-model token accounting straight from the backend — including the
+`local_compute` / `local_cache_hit` split of the prompt side — scrape vLLM's
+own endpoint as well; see `../observability/vllm-metrics/README.md`.
 For example, llama.cpp's per-request `/slots` values reset when slots are
 reused, so no lifetime token series is emitted for that path. Decode and output
 intentionally share the generation-token source, but both names are exported

@@ -1,0 +1,26 @@
+# systemd --user unit for the vLLM metrics proxy (head node).
+#
+#   mkdir -p ~/.config/systemd/user ~/vllm-metrics
+#   cp vllm_metrics_proxy.py ~/vllm-metrics/
+#   cp vllm-metrics-proxy.service ~/.config/systemd/user/
+#   loginctl enable-linger $USER          # keep it running without a login session
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now vllm-metrics-proxy
+#   curl -s localhost:9106/metrics | grep vllm_metrics_proxy_upstream_up
+#
+# Serves only GET /metrics, so this port exposes the numbers and not the model.
+# Runs on the head node (rank 0), the only rank with an API server; the worker
+# is --headless and has no /metrics of its own.
+[Unit]
+Description=vLLM metrics proxy (re-serves 127.0.0.1:8888/metrics on :9106 for Prometheus)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/vllm-metrics/vllm_metrics_proxy.py
+Environment=VLLM_METRICS_PROXY_PORT=9106
+Environment=VLLM_METRICS_UPSTREAM=http://127.0.0.1:8888/metrics
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

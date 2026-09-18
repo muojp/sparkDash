@@ -37,6 +37,34 @@
           "value": "$__all"
         },
         "allValue": ".*"
+      },
+      {
+        "name": "model",
+        "label": "model",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "sparkdash-prom"
+        },
+        "query": {
+          "query": "label_values(vllm:generation_tokens_total, model_name)",
+          "refId": "model"
+        },
+        "definition": "label_values(vllm:generation_tokens_total, model_name)",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
       }
     ]
   },
@@ -511,17 +539,18 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name, port) ((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) / 1000)",
+          "expr": "max by (spark, name, port, model) ((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) / 1000)",
           "legendFormat": "input",
           "instant": true
         },
         {
           "refId": "B",
-          "expr": "max by (spark, name, port) (sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} / 1000)",
+          "expr": "max by (spark, name, port, model) (sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} / 1000)",
           "legendFormat": "(+ cached)",
           "instant": true
         }
-      ]
+      ],
+      "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
     },
     {
       "id": 37,
@@ -654,11 +683,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name, port) (sparkdash_llm_output_tokens_total{spark=~\"$spark\"} / 1000)",
+          "expr": "max by (spark, name, port, model) (sparkdash_llm_output_tokens_total{spark=~\"$spark\"} / 1000)",
           "legendFormat": "output",
           "instant": true
         }
-      ]
+      ],
+      "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
     },
     {
       "id": 5,
@@ -752,12 +782,12 @@
       ]
     },
     {
-      "id": 101,
+      "id": 102,
       "type": "row",
-      "title": "GPU / Memory (Prometheus)",
+      "title": "LLM",
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 9,
         "w": 24,
         "h": 1
       },
@@ -765,28 +795,26 @@
       "panels": []
     },
     {
-      "id": 10,
+      "id": 22,
       "type": "timeseries",
-      "title": "GPU utilization",
+      "title": "Output tokens rate (from counter)",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
       },
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 10,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "percent",
+          "unit": "short",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10
-          },
-          "max": 100,
-          "min": 0
+          }
         },
         "overrides": []
       },
@@ -802,148 +830,95 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name) (sparkdash_gpu_usage_percent{spark=~\"$spark\"})",
-          "legendFormat": "{{name}}"
+          "expr": "max by (spark, name, port, model) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[5m]))",
+          "legendFormat": "{{name}}:{{port}} {{model}} - 5m rate"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (spark, name, port, model) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[1h]))",
+          "legendFormat": "{{name}}:{{port}} {{model}} - 1h avg"
         }
-      ]
+      ],
+      "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
     },
     {
-      "id": 11,
+      "id": 24,
       "type": "timeseries",
-      "title": "GPU temperature",
+      "title": "Accumulated tokens (restart-safe)",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
       },
       "gridPos": {
         "x": 12,
-        "y": 43,
+        "y": 10,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "celsius",
+          "unit": "suffix: k",
+          "decimals": 0,
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 10
+            "fillOpacity": 10,
+            "pointSize": 3,
+            "showPoints": "auto",
+            "lineInterpolation": "linear",
+            "spanNulls": true
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* prefill$"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "prefill"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
         }
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name) (sparkdash_gpu_temperature_celsius{spark=~\"$spark\"})",
-          "legendFormat": "{{name}}"
-        }
-      ]
-    },
-    {
-      "id": 12,
-      "type": "timeseries",
-      "title": "Power draw",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sparkdash-prom"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 51,
-        "w": 12,
-        "h": 8
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "watt",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "max by (spark, name) (sparkdash_gpu_power_draw_watts{spark=~\"$spark\"})",
-          "legendFormat": "{{name}} GPU"
+          "expr": "max by (spark, name, port, model) ((sparkdash_llm_output_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_output_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
+          "legendFormat": "{{name}}:{{port}} {{model}} output"
         },
         {
           "refId": "B",
-          "expr": "max by (spark, name) (sparkdash_cpu_power_draw_watts{spark=~\"$spark\"})",
-          "legendFormat": "{{name}} CPU"
+          "expr": "max by (spark, name, port, model) (((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) or (last_over_time((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) and (max_over_time(timestamp(sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
+          "legendFormat": "{{name}}:{{port}} {{model}} non-cached prefill"
         },
         {
           "refId": "C",
-          "expr": "max by (spark, name) (sparkdash_system_power_draw_watts{spark=~\"$spark\"})",
-          "legendFormat": "{{name}} system"
+          "expr": "max by (spark, name, port, model) ((sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
+          "legendFormat": "{{name}}:{{port}} {{model}} cached prefill"
         }
-      ]
-    },
-    {
-      "id": 13,
-      "type": "timeseries",
-      "title": "Unified memory used",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sparkdash-prom"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 51,
-        "w": 12,
-        "h": 8
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "max by (spark, name) (sparkdash_unified_memory_gpu_used_bytes{spark=~\"$spark\"})",
-          "legendFormat": "{{name}} GPU"
-        },
-        {
-          "refId": "B",
-          "expr": "max by (spark, name) (sparkdash_unified_memory_cpu_used_bytes{spark=~\"$spark\"})",
-          "legendFormat": "{{name}} CPU"
-        }
-      ]
+      ],
+      "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
     },
     {
       "id": 16,
@@ -1125,22 +1100,22 @@
       ]
     },
     {
-      "id": 15,
+      "id": 23,
       "type": "timeseries",
-      "title": "SM clock",
+      "title": "KV cache / requests",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
       },
       "gridPos": {
-        "x": 0,
-        "y": 59,
+        "x": 12,
+        "y": 26,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "rotmhz",
+          "unit": "short",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10
@@ -1160,23 +1135,21 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name) (sparkdash_gpu_sm_clock_mhz{spark=~\"$spark\"})",
-          "legendFormat": "{{name}}"
+          "expr": "max by (spark, name, port, model) (sparkdash_llm_kv_cache_usage_ratio{spark=~\"$spark\"})",
+          "legendFormat": "{{name}}:{{port}} {{model}} kv"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (spark, name, port, model) (sparkdash_llm_requests_running{spark=~\"$spark\"})",
+          "legendFormat": "{{name}}:{{port}} {{model}} running"
+        },
+        {
+          "refId": "C",
+          "expr": "max by (spark, name, port, model) (sparkdash_llm_requests_waiting{spark=~\"$spark\"})",
+          "legendFormat": "{{name}}:{{port}} {{model}} waiting"
         }
-      ]
-    },
-    {
-      "id": 102,
-      "type": "row",
-      "title": "LLM",
-      "gridPos": {
-        "x": 0,
-        "y": 9,
-        "w": 24,
-        "h": 1
-      },
-      "collapsed": false,
-      "panels": []
+      ],
+      "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
     },
     {
       "id": 20,
@@ -1255,28 +1228,420 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name, port) (sparkdash_llm_prefill_tokens_per_second{spark=~\"$spark\"})",
-          "legendFormat": "{{name}}:{{port}}"
+          "expr": "max by (spark, name, port, model) (sparkdash_llm_prefill_tokens_per_second{spark=~\"$spark\"})",
+          "legendFormat": "{{name}}:{{port}} {{model}}"
+        }
+      ],
+      "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
+    },
+    {
+      "id": 105,
+      "type": "row",
+      "title": "vLLM native /metrics — per model (job=vllm)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 106,
+      "type": "timeseries",
+      "title": "Token throughput by kind — 1m rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "description": "Derived from vLLM's own counters, so a burst between scrapes is not lost. prompt_tokens_by_source splits the prompt side into cache hits and tokens that actually had to be computed; the parts sum to vllm:prompt_tokens_total.",
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model_name) (rate(vllm:generation_tokens_total{model_name=~\"$model\"}[1m]))",
+          "legendFormat": "{{model_name}} decode"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (model_name) (rate(vllm:prompt_tokens_by_source_total{model_name=~\"$model\",source=\"local_compute\"}[1m]))",
+          "legendFormat": "{{model_name}} prefill uncached"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (model_name) (rate(vllm:prompt_tokens_by_source_total{model_name=~\"$model\",source=\"local_cache_hit\"}[1m]))",
+          "legendFormat": "{{model_name}} prefill cached"
         }
       ]
     },
     {
-      "id": 22,
+      "id": 107,
       "type": "timeseries",
-      "title": "Output tokens rate (from counter)",
+      "title": "Tokens in the selected range — input / cached-input / output",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "description": "increase() over the dashboard range. Reset-safe (a restart is a reset Prometheus already understands) and attributed per model_name, so switching the pair between DeepSeek and GLM never adds one model's history to the other's.",
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model_name) (increase(vllm:prompt_tokens_total{model_name=~\"$model\"}[$__range]))",
+          "legendFormat": "{{model_name}} input"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (model_name) (increase(vllm:prompt_tokens_by_source_total{model_name=~\"$model\",source=\"local_cache_hit\"}[$__range]))",
+          "legendFormat": "{{model_name}} cached input"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (model_name) (increase(vllm:prompt_tokens_by_source_total{model_name=~\"$model\",source=\"local_compute\"}[$__range]))",
+          "legendFormat": "{{model_name}} uncached input"
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (model_name) (increase(vllm:generation_tokens_total{model_name=~\"$model\"}[$__range]))",
+          "legendFormat": "{{model_name}} output"
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "type": "timeseries",
+      "title": "KV cache usage and queue",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "description": "kv usage is a 0-1 fraction of the pool vLLM sized at boot (635,609 tokens on this pair with GLM at 262K = 2.42 full-context streams). waiting_by_reason separates a queue caused by slot capacity from one caused by deferred scheduling.",
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (model_name) (vllm:kv_cache_usage_perc{model_name=~\"$model\"})",
+          "legendFormat": "{{model_name}} kv usage"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (model_name) (vllm:num_requests_running{model_name=~\"$model\"})",
+          "legendFormat": "{{model_name}} running"
+        },
+        {
+          "refId": "C",
+          "expr": "max by (model_name) (vllm:num_requests_waiting{model_name=~\"$model\"})",
+          "legendFormat": "{{model_name}} waiting"
+        },
+        {
+          "refId": "D",
+          "expr": "max by (model_name, reason) (vllm:num_requests_waiting_by_reason{model_name=~\"$model\"})",
+          "legendFormat": "{{model_name}} waiting/{{reason}}"
+        },
+        {
+          "refId": "E",
+          "expr": "max by (model_name) (increase(vllm:num_preemptions_total{model_name=~\"$model\"}[5m]))",
+          "legendFormat": "{{model_name}} preemptions 5m"
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "type": "timeseries",
+      "title": "Speculative decoding (MTP) — acceptance",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "description": "The draft head's hit rate. accepted/drafted is the overall ratio; the per-position series is the chance the k-th drafted token survives, which is what says whether MTP_NUM_TOKENS should go up or down. Empty when MTP_NUM_TOKENS=0.",
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model_name) (increase(vllm:spec_decode_num_accepted_tokens_total{model_name=~\"$model\"}[5m])) / sum by (model_name) (increase(vllm:spec_decode_num_draft_tokens_total{model_name=~\"$model\"}[5m]))",
+          "legendFormat": "{{model_name}} accepted/drafted"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (model_name, position) (increase(vllm:spec_decode_num_accepted_tokens_per_pos_total{model_name=~\"$model\"}[5m])) / on(model_name) group_left sum by (model_name) (increase(vllm:spec_decode_num_drafts_total{model_name=~\"$model\"}[5m]))",
+          "legendFormat": "{{model_name}} pos {{position}}"
+        }
+      ]
+    },
+    {
+      "id": 110,
+      "type": "timeseries",
+      "title": "Request latency quantiles",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "description": "Computed from vLLM's histograms at query time, so any quantile is available here — unlike the single p95 the sparkDash probe precomputes.",
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, model_name) (rate(vllm:time_to_first_token_seconds_bucket{model_name=~\"$model\"}[5m])))",
+          "legendFormat": "{{model_name}} TTFT p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, model_name) (rate(vllm:time_to_first_token_seconds_bucket{model_name=~\"$model\"}[5m])))",
+          "legendFormat": "{{model_name}} TTFT p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.95, sum by (le, model_name) (rate(vllm:inter_token_latency_seconds_bucket{model_name=~\"$model\"}[5m])))",
+          "legendFormat": "{{model_name}} ITL p95"
+        },
+        {
+          "refId": "D",
+          "expr": "histogram_quantile(0.95, sum by (le, model_name) (rate(vllm:e2e_request_latency_seconds_bucket{model_name=~\"$model\"}[5m])))",
+          "legendFormat": "{{model_name}} e2e p95"
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "type": "timeseries",
+      "title": "Prefix cache hit ratio and finish reasons",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "description": "Both counters are in tokens, so the ratio is the share of prompt tokens served from the prefix cache. finished_reason=length or repetition rising is usually a client problem, not a server one.",
+      "gridPos": {
+        "x": 12,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model_name) (increase(vllm:prefix_cache_hits_total{model_name=~\"$model\"}[5m])) / sum by (model_name) (increase(vllm:prefix_cache_queries_total{model_name=~\"$model\"}[5m]))",
+          "legendFormat": "{{model_name}} prefix hit ratio"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (model_name, finished_reason) (increase(vllm:request_success_total{model_name=~\"$model\"}[5m]))",
+          "legendFormat": "{{model_name}} finished/{{finished_reason}}"
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "GPU / Memory (Prometheus)",
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "GPU utilization",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
       },
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 68,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "max": 100,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (spark, name) (sparkdash_gpu_usage_percent{spark=~\"$spark\"})",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "GPU temperature",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 68,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10
@@ -1296,33 +1661,28 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name, port) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[5m]))",
-          "legendFormat": "{{name}}:{{port}} - 5m rate"
-        },
-        {
-          "refId": "B",
-          "expr": "max by (spark, name, port) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[1h]))",
-          "legendFormat": "{{name}}:{{port}} - 1h avg"
+          "expr": "max by (spark, name) (sparkdash_gpu_temperature_celsius{spark=~\"$spark\"})",
+          "legendFormat": "{{name}}"
         }
       ]
     },
     {
-      "id": 23,
+      "id": 12,
       "type": "timeseries",
-      "title": "KV cache / requests",
+      "title": "Power draw",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
       },
       "gridPos": {
-        "x": 12,
-        "y": 26,
+        "x": 0,
+        "y": 76,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "watt",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10
@@ -1342,96 +1702,105 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name, port) (sparkdash_llm_kv_cache_usage_ratio{spark=~\"$spark\"})",
-          "legendFormat": "{{name}}:{{port}} kv"
+          "expr": "max by (spark, name) (sparkdash_gpu_power_draw_watts{spark=~\"$spark\"})",
+          "legendFormat": "{{name}} GPU"
         },
         {
           "refId": "B",
-          "expr": "max by (spark, name, port) (sparkdash_llm_requests_running{spark=~\"$spark\"})",
-          "legendFormat": "{{name}}:{{port}} running"
+          "expr": "max by (spark, name) (sparkdash_cpu_power_draw_watts{spark=~\"$spark\"})",
+          "legendFormat": "{{name}} CPU"
         },
         {
           "refId": "C",
-          "expr": "max by (spark, name, port) (sparkdash_llm_requests_waiting{spark=~\"$spark\"})",
-          "legendFormat": "{{name}}:{{port}} waiting"
+          "expr": "max by (spark, name) (sparkdash_system_power_draw_watts{spark=~\"$spark\"})",
+          "legendFormat": "{{name}} system"
         }
       ]
     },
     {
-      "id": 24,
+      "id": 13,
       "type": "timeseries",
-      "title": "Accumulated tokens (restart-safe)",
+      "title": "Unified memory used",
       "datasource": {
         "type": "prometheus",
         "uid": "sparkdash-prom"
       },
       "gridPos": {
         "x": 12,
-        "y": 10,
+        "y": 76,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: k",
-          "decimals": 0,
+          "unit": "bytes",
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 10,
-            "pointSize": 3,
-            "showPoints": "auto",
-            "lineInterpolation": "linear",
-            "spanNulls": true
+            "fillOpacity": 10
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* prefill$"
-            },
-            "properties": [
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              },
-              {
-                "id": "custom.axisLabel",
-                "value": "prefill"
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull"
-          ]
+          "displayMode": "list",
+          "placement": "bottom"
         },
         "tooltip": {
-          "mode": "multi",
-          "sort": "none",
-          "hideZeros": false
+          "mode": "multi"
         }
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (spark, name, port) ((sparkdash_llm_output_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_output_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
-          "legendFormat": "{{name}}:{{port}} output"
+          "expr": "max by (spark, name) (sparkdash_unified_memory_gpu_used_bytes{spark=~\"$spark\"})",
+          "legendFormat": "{{name}} GPU"
         },
         {
           "refId": "B",
-          "expr": "max by (spark, name, port) (((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}) or (last_over_time((sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) and (max_over_time(timestamp(sparkdash_llm_prefill_tokens_total{spark=~\"$spark\"} - sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
-          "legendFormat": "{{name}}:{{port}} non-cached prefill"
+          "expr": "max by (spark, name) (sparkdash_unified_memory_cpu_used_bytes{spark=~\"$spark\"})",
+          "legendFormat": "{{name}} CPU"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "SM clock",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rotmhz",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
         {
-          "refId": "C",
-          "expr": "max by (spark, name, port) ((sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_cached_prefill_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))) / 1000)",
-          "legendFormat": "{{name}}:{{port}} cached prefill"
+          "refId": "A",
+          "expr": "max by (spark, name) (sparkdash_gpu_sm_clock_mhz{spark=~\"$spark\"})",
+          "legendFormat": "{{name}}"
         }
       ]
     },
@@ -1441,7 +1810,7 @@
       "title": "CPU / Network / Storage",
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 92,
         "w": 24,
         "h": 1
       },
@@ -1458,7 +1827,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 93,
         "w": 12,
         "h": 8
       },
@@ -1501,7 +1870,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 68,
+        "y": 93,
         "w": 12,
         "h": 8
       },
@@ -1547,7 +1916,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 101,
         "w": 12,
         "h": 8
       },
@@ -1593,7 +1962,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 76,
+        "y": 101,
         "w": 12,
         "h": 8
       },
@@ -1632,7 +2001,7 @@
       "title": "Same data via InfluxDB (push path)",
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 109,
         "w": 24,
         "h": 1
       },
@@ -1649,7 +2018,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 85,
+        "y": 110,
         "w": 12,
         "h": 8
       },
@@ -1691,7 +2060,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 85,
+        "y": 110,
         "w": 12,
         "h": 8
       },

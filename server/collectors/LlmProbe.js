@@ -157,13 +157,19 @@ export class LlmProbe {
    * @param {number|null|undefined} uncachedInput
    */
   _updateLifetimeTokenTotals(input, output, cachedInput = null, uncachedInput = null) {
+    // Key the store by the same tuple that labels the exported series
+    // (spark, port, model), so a total can never be attributed to a series
+    // other than the one it was measured on. Switching this port between two
+    // models used to continue the previous model's totals under the new
+    // model's label.
     const persisted = llmLifetime.update(
       String(this.spark?.id || ""),
       this.port,
       input,
       output,
       cachedInput,
-      uncachedInput
+      uncachedInput,
+      this.modelId || ""
     );
     if (persisted) {
       this.lifetimeRawTokenCounts.input = persisted.rawInput;

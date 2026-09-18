@@ -21,3 +21,29 @@ scrape_configs:
           site: local
           spark: dgx01
           name: dgx01
+
+  # vLLM's own Prometheus endpoint on the head node, re-served by
+  # observability/vllm-metrics/ (the API itself stays on 127.0.0.1).
+  # Every series here carries `model_name`, so switching the pair between
+  # DeepSeek-v4-Flash and GLM-5.3-Flash on the same port puts each model's
+  # token counters in its own series instead of continuing the other's.
+  - job_name: vllm
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["192.168.0.100:9106"]
+        labels:
+          site: local
+          spark: dgx01
+          name: dgx01
+          role: head
+
+  # TEMPORARY (2026-09-17): x260 Terminus worker host, node_exporter user service on x260:9100.
+  # Remove this job and `systemctl --user disable --now node-exporter` on x260 when no longer needed.
+  - job_name: x260-node
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["192.168.0.121:9100"]
+        labels:
+          site: local
+          name: x260
+          role: terminus-worker
