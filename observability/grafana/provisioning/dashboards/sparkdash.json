@@ -2094,6 +2094,148 @@
           "query": "from(bucket: \"sparkdash\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"sparkdash_llm\" and r._field == \"generation_tokens_per_second\") |> keep(columns: [\"_time\",\"_value\",\"name\",\"port\"])"
         }
       ]
+    },
+    {
+      "id": 112,
+      "type": "row",
+      "title": "Deployment (which model the pair serves)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 118
+      },
+      "panels": []
+    },
+    {
+      "id": 113,
+      "type": "stat",
+      "title": "Active model",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 119
+      },
+      "description": "The served model name behind the pair's API, from sparkDash's probe of /v1/models (llm_available == 1). A switch (bin/dgx-model switch) shows up here 10-17 min after it starts, once the new checkpoint answers.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sparkdash-prom"
+          },
+          "expr": "max by (model) (sparkdash_llm_available{spark=~\"$spark\", port=\"8888\"} == 1)",
+          "legendFormat": "{{model}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "orientation": "horizontal"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 114,
+      "type": "state-timeline",
+      "title": "Deployment over time",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sparkdash-prom"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 16,
+        "x": 8,
+        "y": 119
+      },
+      "description": "One lane per served model: filled while that model answered the probe. Gaps are the loading window of a switch (or an outage). Use it as the annotation track when comparing per-model review results in the LLM rows above.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sparkdash-prom"
+          },
+          "expr": "max by (model) (sparkdash_llm_available{spark=~\"$spark\", port=\"8888\"})",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "left",
+        "rowHeight": 0.8,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "down",
+                  "color": "transparent"
+                },
+                "1": {
+                  "text": "serving",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
     }
   ]
 }
