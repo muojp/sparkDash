@@ -1,0 +1,105 @@
+# One name per quantity, whichever engine is serving.
+#
+# The pair runs vLLM for most deployments and SGLang for Qwen3.8-27B, and the two export the same
+# quantities under different names and different labels. A dashboard panel written against
+# `vllm:*` therefore goes blank the moment SGLang is the thing serving — which is how the 27B came
+# to have no token graphs at all while its counters were sitting in Prometheus the whole time.
+#
+# These rules put both engines under `llm:*`, so a panel asks for a quantity and not for an engine.
+# The engine-specific labels (`engine_type`, `is_streaming`, `source`, `cache_source`) are summed
+# away; what stays is the identity that matters downstream: model_name, spark, name, role, site.
+#
+# `or` is a set operation, not a merge: the second selector contributes only the series the first
+# does not have. Since only one engine serves at a time, and each labels its series with its own
+# `model_name`, the two never collide — and a deployment that runs one server per node (the 27B)
+# sums across instances in the panel, not here, so a node can still be looked at on its own.
+groups:
+  - name: llm-engine-neutral
+    interval: 5s
+    rules:
+      - record: llm:prompt_tokens_total
+        expr: |
+          sum without (engine_type, is_streaming, source, cache_source) (
+            vllm:prompt_tokens_total or sglang:prompt_tokens_total
+          )
+
+      - record: llm:generation_tokens_total
+        expr: |
+          sum without (engine_type, is_streaming, source, cache_source) (
+            vllm:generation_tokens_total or sglang:generation_tokens_total
+          )
+
+      # Prompt tokens answered from cache rather than computed. vLLM splits the prompt side by
+      # source and the parts sum to the total; SGLang exports the cached part directly, by cache
+      # tier. Both are counters of prompt tokens, so the neutral series stays comparable.
+      - record: llm:prompt_cached_tokens_total
+        expr: |
+          sum without (engine_type, is_streaming, source, cache_source) (
+            vllm:prompt_tokens_by_source_total{source="local_cache_hit"}
+            or sglang:cached_tokens_total
+          )
+
+      - record: llm:num_requests_running
+        expr: |
+          sum without (engine_type, is_streaming) (
+            vllm:num_requests_running or sglang:num_running_reqs
+          )
+
+      - record: llm:num_requests_waiting
+        expr: |
+          sum without (engine_type, is_streaming) (
+            vllm:num_requests_waiting or sglang:num_queue_reqs
+          )
+
+      # Fraction of the KV pool in use, 0..1 in both engines. SGLang calls it token usage because
+      # that is what it measures — used tokens over the pool — and vLLM's `usage_perc` is likewise
+      # a fraction despite the name.
+      - record: llm:kv_cache_usage_ratio
+        expr: |
+          sum without (engine_type, is_streaming) (
+            vllm:kv_cache_usage_perc or sglang:token_usage
+          )
+
+      # Prompt tokens the engine actually had to compute. vLLM reports it directly as a source;
+      # for SGLang it is what the cache did not answer. Both counters come from one scrape of one
+      # endpoint, so the subtraction is consistent at every point — clamped anyway, because a
+      # restart resets the two at the same instant and floating point does the rest.
+      - record: llm:prompt_uncached_tokens_total
+        expr: |
+          clamp_min(llm:prompt_tokens_total - llm:prompt_cached_tokens_total, 0)
+
+      # Latency histograms carry the same bucket layout under both engines, so keeping `le` and
+      # dropping only the engine-specific labels leaves a histogram any quantile can be taken from.
+      - record: llm:time_to_first_token_seconds_bucket
+        expr: |
+          sum without (engine_type, is_streaming) (
+            vllm:time_to_first_token_seconds_bucket or sglang:time_to_first_token_seconds_bucket
+          )
+
+      - record: llm:inter_token_latency_seconds_bucket
+        expr: |
+          sum without (engine_type, is_streaming) (
+            vllm:inter_token_latency_seconds_bucket or sglang:inter_token_latency_seconds_bucket
+          )
+
+      - record: llm:e2e_request_latency_seconds_bucket
+        expr: |
+          sum without (engine_type, is_streaming) (
+            vllm:e2e_request_latency_seconds_bucket or sglang:e2e_request_latency_seconds_bucket
+          )
+
+      # Which engine a model's series came from, so a panel can label it and a model that stops
+      # exporting is visible as a gone series rather than a flat line of the other engine's shape.
+      - record: llm:engine_info
+        expr: |
+          sum without (engine_type, is_streaming, source, cache_source)
+            (vllm:prompt_tokens_total) * 0 + 1
+        labels:
+          engine: vllm
+
+      - record: llm:engine_info
+        expr: |
+          sum without (engine_type, is_streaming, source, cache_source)
+            (sglang:prompt_tokens_total) * 0 + 1
+        labels:
+          engine: sglang

@@ -21,6 +21,39 @@ whole problem, and vLLM solves it for free:
 | Speculative decoding | one acceptance ratio | drafted / accepted, and accepted per draft position |
 | Needs the backend up | no (last value persists) | yes (`vllm_metrics_proxy_upstream_up` says which) |
 
+## Two engines, one set of names
+
+Most deployments on this pair run vLLM; Qwen3.8-27B runs SGLang, which exports the same quantities
+as `sglang:*` with labels of its own. A panel written against `vllm:*` therefore goes blank exactly
+when SGLang is serving — which is how the 27B came to show no token graphs at all while its
+counters were in Prometheus the whole time.
+
+`../prometheus/rules/llm-engines.yml` records both engines under `llm:*`, so the dashboard asks for
+a quantity rather than an engine:
+
+| neutral | vLLM | SGLang |
+|---|---|---|
+| `llm:prompt_tokens_total` | `vllm:prompt_tokens_total` | `sglang:prompt_tokens_total` |
+| `llm:generation_tokens_total` | `vllm:generation_tokens_total` | `sglang:generation_tokens_total` |
+| `llm:prompt_cached_tokens_total` | `vllm:prompt_tokens_by_source_total{source="local_cache_hit"}` | `sglang:cached_tokens_total` |
+| `llm:prompt_uncached_tokens_total` | `source="local_compute"` | total − cached |
+| `llm:num_requests_running` / `_waiting` | same names | `sglang:num_running_reqs` / `num_queue_reqs` |
+| `llm:kv_cache_usage_ratio` | `vllm:kv_cache_usage_perc` | `sglang:token_usage` |
+| `llm:*_seconds_bucket` (TTFT, ITL, e2e) | same names | same names, `sglang:` prefix |
+
+Preemptions, waiting-by-reason, speculative acceptance and the prefix-cache ratio stay vLLM-only:
+SGLang either does not export them or exports something that is not the same measurement, and a
+neutral name over two different measurements is worse than a blank panel.
+
+## Both nodes, when both nodes serve
+
+A pair deployment runs one model across two nodes and only rank 0 has an API, so one proxy on the
+head is the whole story. The 27B is the exception — two independent servers, one per node — and
+scraping only the head halved its token counts. `dgx02` therefore runs the same proxy, scraped as
+job `vllm-worker` at `10.10.10.22:9106` over WireGuard (it is not reachable on the LAN). While a
+pair deployment serves, that target reports `vllm_metrics_proxy_upstream_up 0`, which is correct
+and not an outage: the worker is headless and has no metrics of its own.
+
 ## The token identity
 
 vLLM splits the prompt side into where each token came from, and the parts sum

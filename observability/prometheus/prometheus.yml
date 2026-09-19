@@ -2,6 +2,11 @@ global:
   scrape_interval: 5s
   evaluation_interval: 15s
 
+# Engine-neutral series: the pair runs vLLM for most deployments and SGLang for Qwen3.8-27B, and a
+# panel written against one engine's names goes blank when the other is serving.
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   - job_name: sparkdash
     metrics_path: /metrics
@@ -36,6 +41,21 @@ scrape_configs:
           spark: dgx01
           name: dgx01
           role: head
+
+  # The worker node of a deployment that runs one server per node rather than one model across
+  # both (Qwen3.8-27B). Its API and metrics are its own, so scraping only the head halves the
+  # token counts — the pool's other half was simply missing. 10.10.10.22 is the WireGuard address;
+  # dgx02 is not reachable on the LAN. `upstream_up 0` while a pair deployment is serving is the
+  # normal state for this target: those deployments run a headless worker with no metrics at all.
+  - job_name: vllm-worker
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["10.10.10.22:9106"]
+        labels:
+          site: local
+          spark: dgx02
+          name: dgx02
+          role: worker
 
   # TEMPORARY (2026-09-17): x260 Terminus worker host, node_exporter user service on x260:9100.
   # Remove this job and `systemctl --user disable --now node-exporter` on x260 when no longer needed.
