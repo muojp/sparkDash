@@ -505,8 +505,16 @@ export class SparkRegistry {
        * Standalone: probe/show local LLM (default true).
        * Head always on; worker always off.
        */
+      // The role is the default, not the verdict: a single-node recipe can be run as one server
+      // per node, and then a "worker" serves its own API. An explicit boolean wins.
       llmMonitoring:
-        role === "worker" ? false : role === "head" ? true : config.llmMonitoring !== false,
+        typeof config.llmMonitoring === "boolean"
+          ? config.llmMonitoring
+          : role === "worker"
+            ? false
+            : role === "head"
+              ? true
+              : true,
       /**
        * Probe local ComfyUI and show the ComfyUI card (default false; all roles).
        */
