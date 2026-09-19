@@ -248,9 +248,13 @@ export class SparkMonitor {
    */
   _llmMonitoringEnabled(spark = this.spark) {
     const role = spark?.role || (spark?.workerNode ? "worker" : "standalone");
+    // An explicit llmMonitoring flag outranks the role. `worker` means "no API of its own" for a
+    // tensor-parallel deployment, but a single-node recipe can be run as one server per node, and
+    // then the worker serves too — it was invisible on the dashboard until this.
+    if (typeof spark?.llmMonitoring === "boolean") return spark.llmMonitoring;
     if (role === "worker") return false;
     if (role === "head") return true;
-    return spark?.llmMonitoring !== false;
+    return true;
   }
 
   /** Start or clear the LLM poll timer based on monitoring flag. */
