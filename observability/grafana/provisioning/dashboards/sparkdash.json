@@ -919,11 +919,11 @@
         },
         {
           "refId": "D",
-          "expr": "sum by (spark, name, port) (max by (spark, name, port, model) (sparkdash_llm_output_tokens_total{spark=~\"$spark\"})) / 1000",
+          "expr": "sum by (spark, name, port) (max by (spark, name, port, model) ((sparkdash_llm_output_tokens_total{spark=~\"$spark\"} or (last_over_time(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[$__range] @ end()) and (max_over_time(timestamp(sparkdash_llm_output_tokens_total{spark=~\"$spark\"})[$__range:5m] @ end()) <= time()))))) / 1000",
           "legendFormat": "{{name}}:{{port}} all models output"
         }
       ],
-      "description": "sparkDash lifetime totals keyed on spark:port:model. Every model this port has served keeps its own series (a switched-out model holds its last value while the other checkpoint is loaded); the 'all models' line is their sum, i.e. the port's restart-safe lifetime across model switches. The vLLM-native row below shows the backend's own per-model counters."
+      "description": "sparkDash lifetime totals keyed on spark:port:model. Every model this port has served keeps its own series (a switched-out model holds its last value while the other checkpoint is loaded); the 'all models' line is their sum, i.e. the port's restart-safe lifetime across model switches. The vLLM-native row below shows the backend's own per-model counters. The 'all models' line sums the same held values, so a switch does not make the port's lifetime total drop and come back: every model this port has served counts, whether or not it is the one loaded right now."
     },
     {
       "id": 16,
