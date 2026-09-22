@@ -56,7 +56,16 @@ export function isHfHubCachePath(id) {
 function applyModelRef(probe, raw) {
   if (raw == null || raw === "") return;
   const s = String(raw);
-  probe.modelId = normalizeModelId(s);
+  const nextId = normalizeModelId(s);
+  if (probe.modelId && nextId !== probe.modelId) {
+    // A different model on the same port: never export the previous model's
+    // totals under the new label, not even for one tick (2026-09-23).
+    probe.totalPrefillTokens = null;
+    probe.totalCachedPrefillTokens = null;
+    probe.totalUncachedPrefillTokens = null;
+    probe.totalOutputTokens = null;
+  }
+  probe.modelId = nextId;
   probe.modelPath = isHfHubCachePath(s) ? null : s;
 }
 
@@ -864,8 +873,12 @@ export class LlmProbe {
         null;
     }
 
-    if (sgData.model_path) {
-      applyModelRef(this, sgData.model_path);
+    // Key on the served name (what /v1/models answers and what every other
+    // backend is labelled with), never the checkpoint path (2026-09-23).
+    const sgServed = sgData.served_model_name || sgData.model_path;
+    if (sgServed) {
+      applyModelRef(this, sgServed);
+      this._sglangHasServedName = Boolean(sgData.served_model_name);
     }
 
     const maxRunning = Number(sgData.max_running_requests);
@@ -1134,6 +1147,9 @@ export class LlmProbe {
 
   /** Prefer SGLang /model_info (or deprecated /get_model_info) over raw HF cache paths. */
   async _enrichSglangModelInfo() {
+    // The server info already gave the served name; model_path would replace
+    // it with the checkpoint path and split the series (2026-09-23).
+    if (this._sglangHasServedName) return;
     for (const path of SGLANG_MODEL_INFO_PATHS) {
       try {
         const res = await this._fetch(`${this.baseUrl}${path}`);
