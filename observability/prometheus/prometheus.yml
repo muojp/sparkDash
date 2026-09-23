@@ -57,6 +57,16 @@ scrape_configs:
           name: dgx02
           role: worker
 
+  # dgx-lb (tools/dgx-lb) on dgx01: the load balancer in front of the two qs-single replicas. Its
+  # /metrics carries node=dgx01|dgx02|fleet (LB-own counters, proxied vLLM gauges); every profile port
+  # serves the same registry, so one target is enough. Added 2026-09-24.
+  - job_name: dgx-lb
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["192.168.0.100:8890"]
+        labels:
+          site: local
+
   # TEMPORARY (2026-09-17): x260 Terminus worker host, node_exporter user service on x260:9100.
   # Remove this job and `systemctl --user disable --now node-exporter` on x260 when no longer needed.
   - job_name: x260-node

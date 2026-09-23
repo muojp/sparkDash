@@ -837,6 +837,11 @@
           "refId": "B",
           "expr": "max by (spark, name, port, model) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[1h]))",
           "legendFormat": "{{name}}:{{port}} {{model}} - 1h avg"
+        },
+        {
+          "expr": "sum by (model) (rate(sparkdash_llm_output_tokens_total{spark=~\"$spark\"}[5m]))",
+          "legendFormat": "fleet {{model}} - 5m rate (sum of nodes)",
+          "refId": "C"
         }
       ],
       "description": "sparkDash lifetime totals key on spark:port, not on the model — a model switch on the same port continues the previous model's total. Use the vLLM-native row below for per-model accounting."
